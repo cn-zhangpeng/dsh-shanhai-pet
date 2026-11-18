@@ -1,0 +1,31 @@
+{
+  "name": "dsh-shanhai-pet",
+  "version": "0.1.0",
+  "private": true,
+  "description": "任务状态驱动的 DSH 桌宠：推理掐指、改码磨墨、跑命令御风、收工点灯，不读对话内容。",
+  "type": "module",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./icon": "./icon.svg",
+    "./locale/*.json": "./locale/*.json",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "icon.svg",
+    "locale",
+    "docs",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  }
+}

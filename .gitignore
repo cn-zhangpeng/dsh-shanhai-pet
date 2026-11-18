@@ -1,0 +1,21 @@
+# 依赖与缓存
+node_modules/
+__pycache__/
+*.pyc
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 日志与临时产物
+*.log
+tests/_*.out
+tests/_*.err
+tests/_*.json
+
+# 豆包生成的原始素材（可由 tests/tools 重新生成）
+tests/new-frames/inbox/
+tests/new-frames/selected/

@@ -1,0 +1,5 @@
+# 山海灵宠：一行同时挂 Host 半区（会话事件投影 + /api/shanhai-pet/state）
+# 与 Client 半区（shell.overlay 浮层），Host 与 Client 共享同一个插件条目。
+- insert:
+    - id: shanhai-pet
+      name: dsh-shanhai-pet
