@@ -82,6 +82,26 @@ Host 在 `GET /api/shanhai-pet/state` 的每次请求上推进陪伴计时：客
 悬停立绘时副行同样显示相识天数与今日陪伴。
 "闲时问候"开关（`greet`）在设置页互动组。
 
+## 自定义皮肤（skins）
+
+皮肤目录 `$DSH_HOME/shanhai-pet/skins/<皮肤名>/`，结构与内置一致：
+`pet.json`（帧清单，`frames2d.width/height` 可不同，客户端按比例缩放）+
+`frames/*.png` + `anim/*.webp`。安装两条路：
+
+1. **上传**：`POST /api/shanhai-pet/skins`，body `{op:'upload', name, path, data(base64)}`，
+   逐文件一请求；`path` 白名单 `pet.json` / `frames/*.(png|webp|gif)` / `anim/*.(webp|gif)`，
+   单文件解码后 ≤ 8MB（超限 413），每套 ≤ 120 个文件，目录名 1-32 位字母数字汉字_-
+2. **目录扫描**：手动把文件夹放进 `skins/`，`GET /api/shanhai-pet/skins` 会列出
+   （`pet.json` 可解析且含 `frames2d.tracks` 才算皮肤，坏目录跳过）
+
+切换：`POST` `{op:'select', name}`（空串 = 回内置），写进 `settings.activeSkin`
+持久化。解析规则：
+
+- `pet.json` 路由：activeSkin 的清单可解析就返回它，坏清单回落内置
+- `assets/*` 路由：逐文件"皮肤目录优先、缺失回落内置"——皮肤没给的帧显示内置图
+- 渲染层轮询发现 `settings.activeSkin` 变化后自动重拉帧清单，切换即时生效
+- 删除皮肤：手动移除对应文件夹；列表由扫描实时生成
+
 ### 设置
 
 `GET|POST /api/shanhai-pet/settings`

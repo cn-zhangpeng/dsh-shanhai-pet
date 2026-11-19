@@ -12,7 +12,7 @@
  *       只读暴露给渲染层。
  */
 
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -22,6 +22,7 @@ const MANIFEST_PATH = '/api/shanhai-pet/pet.json'
 const ASSETS_PREFIX = '/api/shanhai-pet/assets'
 const REPORT_PATH = '/api/shanhai-pet/client-report'
 const SETTINGS_PATH = '/api/shanhai-pet/settings'
+const SKINS_PATH = '/api/shanhai-pet/skins'
 const ASSET_ROOT = fileURLToPath(new URL('./assets/ranran/', import.meta.url))
 // frames/<name>.png 逐帧图；anim/<name>.webp|gif 烘焙好的循环动画（浏览器原生播放）。
 const ASSET_FILE = /^[a-z0-9_-]+\/[a-z0-9_-]+\.(png|webp|gif)$/i
@@ -43,6 +44,12 @@ const COMPANY_POLL_WINDOW = 15 * 1000
 const COMPANY_PERSIST_EVERY = 30 * 1000
 // 里程碑（相遇第 N 天）：当天的第一次问候变成特别台词并点灯庆祝。
 const MILESTONES = [1, 7, 30, 100, 200, 365, 500, 1000]
+// 自定义皮肤：目录名/文件路径白名单 + 上传限额。皮肤解析遵循"皮肤优先、缺帧回落内置"。
+const SKIN_NAME_RE = /^[a-zA-Z0-9_\u4e00-\u9fa5-]{1,32}$/
+const SKIN_ASSET_RE = /^(pet\.json|frames\/[a-zA-Z0-9_-]+\.(png|webp|gif)|anim\/[a-zA-Z0-9_-]+\.(webp|gif))$/
+const SKIN_MAX_FILE_BYTES = 8 * 1024 * 1024
+const SKIN_MAX_FILES = 120
+const SKIN_BUILTIN = { name: 'ranran', title: '冉冉' }
 
 /**
  * 工具族：先后顺序决定匹配优先级。
@@ -110,6 +117,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   poke: true, // 点击互动
   narrate: true, // 任务进度播报（todo 清单 + 收工/碰壁台词）
   greet: true, // 闲时温馨问候（打开时一次 + 闲置半小时一次）
+  activeSkin: '', // 自定义皮肤名，空 = 内置冉冉
 })
 
 /** 数值项取值范围，越界按边界夹取。 */
@@ -131,6 +139,12 @@ export function normalizeSettings(input, base = DEFAULT_SETTINGS) {
   const seed = base && typeof base === 'object' ? base : DEFAULT_SETTINGS
   const bool = (key) => (typeof src[key] === 'boolean' ? src[key] : seed[key] !== false)
   const num = (key) => clampNumber(src[key], seed[key], NUMERIC_LIMITS[key])
+  const skin = () => {
+    const raw = typeof src.activeSkin === 'string' ? src.activeSkin.trim() : ''
+    if (raw === '') return ''
+    if (SKIN_NAME_RE.test(raw)) return raw
+    return typeof seed.activeSkin === 'string' && SKIN_NAME_RE.test(seed.activeSkin) ? seed.activeSkin : ''
+  }
   return {
     visible: bool('visible'),
     height: num('height'),
@@ -142,6 +156,7 @@ export function normalizeSettings(input, base = DEFAULT_SETTINGS) {
     poke: bool('poke'),
     narrate: bool('narrate'),
     greet: bool('greet'),
+    activeSkin: skin(),
   }
 }
 
@@ -162,6 +177,68 @@ export function settingsFile(env = process.env, home = homedir()) {
 /** 当日陪伴时长文件路径。 */
 export function companyFile(env = process.env, home = homedir()) {
   return path.join(resolveDshHome(env, home), 'shanhai-pet', 'company.json')
+}
+
+/** 自定义皮肤根目录：skins/<皮肤名>/pet.json + frames/ + anim/。 */
+export function skinsRoot(env = process.env, home = homedir()) {
+  return path.join(resolveDshHome(env, home), 'shanhai-pet', 'skins')
+}
+
+/** 上传的皮肤内相对路径白名单：pet.json 或 frames/anim 下的图片。 */
+export function validSkinPath(rel) {
+  return typeof rel === 'string' && SKIN_ASSET_RE.test(rel)
+}
+
+/** 数皮肤目录下的文件数（递归），用于上传限额。 */
+async function countSkinFiles(dir) {
+  let count = 0
+  let entries = []
+  try {
+    entries = await readdir(dir, { withFileTypes: true })
+  } catch {
+    return 0
+  }
+  for (const entry of entries) {
+    if (entry.isDirectory()) count += await countSkinFiles(path.join(dir, entry.name))
+    else count += 1
+  }
+  return count
+}
+
+/** 扫描自定义皮肤：目录里有可解析的 pet.json（含 frames2d.tracks）才算皮肤。 */
+export async function listSkins(root = skinsRoot()) {
+  let entries = []
+  try {
+    entries = await readdir(root, { withFileTypes: true })
+  } catch {
+    return []
+  }
+  const skins = []
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue
+    try {
+      const manifest = JSON.parse(await readFile(path.join(root, entry.name, 'pet.json'), 'utf8'))
+      const tracks = manifest && manifest.frames2d && manifest.frames2d.tracks
+      if (!tracks || typeof tracks !== 'object') continue
+      skins.push({ name: entry.name, title: String(manifest.displayName || entry.name) })
+    } catch {
+      /* 坏目录跳过，不进列表 */
+    }
+  }
+  return skins.sort((a, b) => a.name.localeCompare(b.name, 'zh'))
+}
+
+/** 皮肤内单文件原子写（二进制安全），并拦截路径逃逸。 */
+export async function writeSkinFile(root, rel, buffer) {
+  const resolved = path.resolve(root, rel)
+  const resolvedRoot = path.resolve(root)
+  if (resolved !== resolvedRoot && !resolved.startsWith(resolvedRoot + path.sep)) {
+    throw new Error('path escapes skin dir')
+  }
+  await mkdir(path.dirname(resolved), { recursive: true })
+  const tmp = resolved + '.tmp'
+  await writeFile(tmp, buffer)
+  await rename(tmp, resolved)
 }
 
 /** 容错读：文件缺失或损坏都回落默认值，绝不让坏 JSON 挡住浮层。 */
@@ -520,14 +597,14 @@ function sendJson(res, body, head, status = 200) {
   res.end(payload)
 }
 
-/** handler 路由用：读完整个请求体（设置 patch 很小，64KB 足够）。 */
-function readBody(req) {
+/** handler 路由用：读完整个请求体（设置 patch 很小，64KB 足够；皮肤上传可放宽）。 */
+function readBody(req, maxBytes = 64 * 1024) {
   return new Promise((resolve, reject) => {
     const chunks = []
     let size = 0
     req.on('data', (chunk) => {
       size += chunk.length
-      if (size > 64 * 1024) {
+      if (size > maxBytes) {
         reject(new Error('body too large'))
         req.destroy()
         return
@@ -567,6 +644,13 @@ export function apply(ctx) {
       days: comp.days || 1,
       milestone: comp.milestone || 0,
     }
+  }
+
+  /** 当前生效的自定义皮肤目录（activeSkin 合法才返回，否则 null = 用内置素材）。 */
+  function skinDirFor() {
+    const name = settings.activeSkin
+    if (!name || !SKIN_NAME_RE.test(name)) return null
+    return path.join(skinsRoot(), name)
   }
 
   const web = ctx.get('webServer')
@@ -613,17 +697,30 @@ export function apply(ctx) {
           if (request.method !== 'GET' && request.method !== 'HEAD') {
             return methodNotAllowed()
           }
-          try {
-            const text = await readFile(path.join(ASSET_ROOT, 'pet.json'), 'utf8')
-            return new Response(text, {
-              headers: {
-                'content-type': 'application/json; charset=utf-8',
-                'cache-control': 'no-cache',
-              },
-            })
-          } catch {
-            return json({ ok: false, error: 'pet.json missing' }, 404)
+          /* 皮肤优先：activeSkin 的 pet.json 可解析就用它，坏了解析失败回落内置。 */
+          let text = null
+          const skinDir = skinDirFor()
+          if (skinDir) {
+            try {
+              const parsed = JSON.parse(await readFile(path.join(skinDir, 'pet.json'), 'utf8'))
+              if (parsed && parsed.frames2d && parsed.frames2d.tracks) text = JSON.stringify(parsed)
+            } catch {
+              text = null
+            }
           }
+          if (text === null) {
+            try {
+              text = await readFile(path.join(ASSET_ROOT, 'pet.json'), 'utf8')
+            } catch {
+              return json({ ok: false, error: 'pet.json missing' }, 404)
+            }
+          }
+          return new Response(text, {
+            headers: {
+              'content-type': 'application/json; charset=utf-8',
+              'cache-control': 'no-cache',
+            },
+          })
         },
       }),
     )
@@ -645,17 +742,29 @@ export function apply(ctx) {
           rel = rel.replace(/^\/+/, '')
           if (!ASSET_FILE.test(rel)) return notFound()
           const ext = rel.slice(rel.lastIndexOf('.') + 1).toLowerCase()
-          try {
-            const buf = await readFile(path.join(ASSET_ROOT, rel))
-            return new Response(buf, {
-              headers: {
-                'content-type': ASSET_TYPES[ext] || 'application/octet-stream',
-                'cache-control': 'no-cache',
-              },
-            })
-          } catch {
-            return notFound()
+          /* 皮肤优先、缺帧回落内置：皮肤没给的帧显示内置图，不会因缺素材而崩。 */
+          let buf = null
+          const skinDir = skinDirFor()
+          if (skinDir) {
+            try {
+              buf = await readFile(path.join(skinDir, rel))
+            } catch {
+              buf = null
+            }
           }
+          if (buf === null) {
+            try {
+              buf = await readFile(path.join(ASSET_ROOT, rel))
+            } catch {
+              return notFound()
+            }
+          }
+          return new Response(buf, {
+            headers: {
+              'content-type': ASSET_TYPES[ext] || 'application/octet-stream',
+              'cache-control': 'no-cache',
+            },
+          })
         },
       }),
     )
@@ -725,6 +834,108 @@ export function apply(ctx) {
           }
           settings = next
           sendJson(res, { ok: true, settings }, false)
+        },
+      }),
+    )
+
+    /* 自定义皮肤：GET 列表 / POST 上传（op=upload）与切换（op=select）。 */
+    ctx.effect(() =>
+      web.register({
+        kind: 'exact',
+        path: SKINS_PATH,
+        handler: async (req, res) => {
+          const method = String(req.method || 'GET').toUpperCase()
+          if (method === 'GET' || method === 'HEAD') {
+            const custom = await listSkins(skinsRoot())
+            sendJson(
+              res,
+              { ok: true, active: settings.activeSkin, skins: [SKIN_BUILTIN, ...custom] },
+              method === 'HEAD',
+            )
+            return
+          }
+          if (method !== 'POST') {
+            res.writeHead(405, { allow: 'GET, HEAD, POST' })
+            res.end('Method Not Allowed')
+            return
+          }
+          let body = null
+          try {
+            body = JSON.parse(await readBody(req, SKIN_MAX_FILE_BYTES * 2 + 64 * 1024))
+          } catch (err) {
+            const tooLarge = String((err && err.message) || '').includes('too large')
+            sendJson(res, { ok: false, error: tooLarge ? 'payload too large' : 'invalid json' }, false, tooLarge ? 413 : 400)
+            return
+          }
+          if (!body || typeof body !== 'object') {
+            sendJson(res, { ok: false, error: 'invalid body' }, false, 400)
+            return
+          }
+          const op = body.op
+          if (op === 'upload') {
+            const name = typeof body.name === 'string' ? body.name.trim() : ''
+            const rel = typeof body.path === 'string' ? body.path.replace(/\\/g, '/') : ''
+            if (!SKIN_NAME_RE.test(name)) {
+              sendJson(res, { ok: false, error: 'invalid skin name' }, false, 400)
+              return
+            }
+            if (!validSkinPath(rel)) {
+              sendJson(res, { ok: false, error: 'invalid path' }, false, 400)
+              return
+            }
+            const buffer = Buffer.from(String(body.data || ''), 'base64')
+            if (!buffer.length) {
+              sendJson(res, { ok: false, error: 'empty file' }, false, 400)
+              return
+            }
+            if (buffer.length > SKIN_MAX_FILE_BYTES) {
+              sendJson(res, { ok: false, error: 'file too large' }, false, 413)
+              return
+            }
+            const dir = path.join(skinsRoot(), name)
+            if ((await countSkinFiles(dir)) >= SKIN_MAX_FILES) {
+              sendJson(res, { ok: false, error: 'too many files' }, false, 400)
+              return
+            }
+            try {
+              await writeSkinFile(dir, rel, buffer)
+            } catch (err) {
+              sendJson(res, { ok: false, error: 'write failed: ' + String((err && err.message) || err) }, false, 400)
+              return
+            }
+            sendJson(res, { ok: true, name, path: rel, bytes: buffer.length }, false)
+            return
+          }
+          if (op === 'select') {
+            let name = typeof body.name === 'string' ? body.name.trim() : ''
+            if (name === SKIN_BUILTIN.name) name = '' // 内置皮肤 = 清空 activeSkin
+            if (name !== '' && !SKIN_NAME_RE.test(name)) {
+              sendJson(res, { ok: false, error: 'invalid skin name' }, false, 400)
+              return
+            }
+            if (name !== '') {
+              const custom = await listSkins(skinsRoot())
+              if (!custom.some((s) => s.name === name)) {
+                sendJson(res, { ok: false, error: 'skin not found' }, false, 400)
+                return
+              }
+            }
+            const next = normalizeSettings({ ...settings, activeSkin: name }, settings)
+            settingsWrites = settingsWrites.then(() => writeSettings(next))
+            let failed = null
+            await settingsWrites.catch((err) => {
+              failed = err
+            })
+            settingsWrites = Promise.resolve()
+            if (failed) {
+              sendJson(res, { ok: false, error: 'write failed: ' + String(failed && failed.message) }, false, 500)
+              return
+            }
+            settings = next
+            sendJson(res, { ok: true, settings }, false)
+            return
+          }
+          sendJson(res, { ok: false, error: 'invalid op' }, false, 400)
         },
       }),
     )

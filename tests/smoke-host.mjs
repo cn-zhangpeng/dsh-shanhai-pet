@@ -3,7 +3,7 @@
  * 跑法：node tests/smoke-host.mjs
  */
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
@@ -23,6 +23,8 @@ const {
   readSettings,
   readCompany,
   tickCompany,
+  listSkins,
+  skinsRoot,
   DEFAULT_SETTINGS,
 } = await import('../index.js')
 
@@ -406,6 +408,86 @@ const corruptFile = settingsFile()
 const fs = await import('node:fs/promises')
 await fs.writeFile(corruptFile, 'not json', 'utf8')
 assert.equal((await readSettings()).height, 250, '坏文件回落默认值')
+
+/* ---- 自定义皮肤：扫描 / 上传 / 切换 / 解析优先 ---- */
+const skinsRoute = find('/api/shanhai-pet/skins')
+assert.ok(skinsRoute && typeof skinsRoute.handler === 'function', '皮肤路由已注册')
+
+const skinsList0 = await (
+  await callRoute(skinsRoute, new Request('http://127.0.0.1/api/shanhai-pet/skins'))
+).json()
+assert.deepEqual(skinsList0.skins.map((s) => s.name), ['ranran'], '初始只有内置皮肤')
+assert.equal(skinsList0.active, '', '默认无自定义皮肤')
+
+const skinJson = Buffer.from(
+  JSON.stringify({ displayName: '测试皮肤', frames2d: { tracks: { idle: { frames: ['a'] } } } }),
+).toString('base64')
+const framePng = Buffer.from('fake-png-bytes').toString('base64')
+const postSkin = (body) =>
+  callRoute(
+    skinsRoute,
+    new Request('http://127.0.0.1/api/shanhai-pet/skins', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  )
+
+const up1 = await (await postSkin({ op: 'upload', name: 'myskin', path: 'pet.json', data: skinJson })).json()
+assert.equal(up1.ok, true, '上传 pet.json 成功')
+const up2 = await (
+  await postSkin({ op: 'upload', name: 'myskin', path: 'frames/a.png', data: framePng })
+).json()
+assert.equal(up2.ok, true, '上传帧图成功')
+
+const badName = await postSkin({ op: 'upload', name: '../evil', path: 'pet.json', data: framePng })
+assert.equal(badName.status, 400, '非法皮肤名被拒')
+const badPath = await postSkin({ op: 'upload', name: 'myskin', path: '../../settings.json', data: framePng })
+assert.equal(badPath.status, 400, '路径逃逸被拒')
+const badRel = await postSkin({ op: 'upload', name: 'myskin', path: 'frames/../../x.png', data: framePng })
+assert.equal(badRel.status, 400, '白名单外路径被拒')
+const oversize = await postSkin({
+  op: 'upload',
+  name: 'myskin',
+  path: 'frames/big.png',
+  data: 'A'.repeat(12 * 1024 * 1024),
+})
+assert.equal(oversize.status, 413, '超限文件 413')
+
+const scanned = await listSkins(skinsRoot())
+assert.ok(scanned.some((s) => s.name === 'myskin' && s.title === '测试皮肤'), '上传后扫描到皮肤')
+const badSkinDir = path.join(skinsRoot(), 'bad-skin')
+await mkdir(badSkinDir, { recursive: true })
+await writeFile(path.join(badSkinDir, 'pet.json'), 'not-json', 'utf8')
+const scannedAfter = await listSkins(skinsRoot())
+assert.ok(!scannedAfter.some((s) => s.name === 'bad-skin'), '坏皮肤目录不进列表')
+
+const selectMissing = await postSkin({ op: 'select', name: 'nope' })
+assert.equal(selectMissing.status, 400, '选择不存在的皮肤被拒')
+const selected = await (await postSkin({ op: 'select', name: 'myskin' })).json()
+assert.equal(selected.settings.activeSkin, 'myskin', '切换皮肤写入设置')
+
+const skinManifest = await (
+  await manifestRoute.resource(new Request('http://127.0.0.1/api/shanhai-pet/pet.json'))
+).json()
+assert.equal(skinManifest.displayName, '测试皮肤', 'manifest 优先用皮肤清单')
+const skinPng = await assetRoute.resource(new Request('http://127.0.0.1/api/shanhai-pet/assets/frames/a.png'))
+assert.equal(skinPng.status, 200)
+assert.equal(await skinPng.text(), 'fake-png-bytes', '帧图来自皮肤目录')
+const fallbackPng = await assetRoute.resource(
+  new Request('http://127.0.0.1/api/shanhai-pet/assets/frames/breathopen.png'),
+)
+assert.equal(fallbackPng.status, 200, '皮肤缺的帧回落内置')
+assert.equal((await fallbackPng.arrayBuffer()).byteLength > 1000, true, '回落帧非空')
+
+const backToBuiltin = await (await postSkin({ op: 'select', name: '' })).json()
+assert.equal(backToBuiltin.settings.activeSkin, '', '空串切回内置')
+const selectBuiltin = await (await postSkin({ op: 'select', name: 'ranran' })).json()
+assert.equal(selectBuiltin.settings.activeSkin, '', '点内置冉冉的启用也能切回内置')
+const builtinManifest = await (
+  await manifestRoute.resource(new Request('http://127.0.0.1/api/shanhai-pet/pet.json'))
+).json()
+assert.equal(builtinManifest.id, 'ranran', '回落内置清单')
 
 const wired = listeners.find(([name]) => name === 'session/event')
 assert.ok(wired, 'session/event 已接上')

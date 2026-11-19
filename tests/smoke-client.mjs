@@ -72,7 +72,14 @@ const ctx = {
 exported.apply(ctx)
 const t = (key) => (zhDict && zhDict[key] !== undefined ? zhDict[key] : key)
 
-assert.equal(registrations.length, 2, '浮层与设置页各注册一次')
+assert.equal(registrations.length, 3, '浮层 / 设置页 / 导航图标各注册一次')
+
+/* 设置导航图标：内联 SVG，按注册 id 匹配 */
+const iconEntry = registrations.find(([options]) => options.name === 'settings.section.icon')
+assert.ok(iconEntry, 'settings.section.icon 已注册')
+assert.equal(iconEntry[0].id, 'shanhai-pet', '图标归属 shanhai-pet')
+const iconVnode = typeof iconEntry[1] === 'function' ? iconEntry[1]({ size: 16 }) : null
+assert.ok(iconVnode && iconVnode.type === 'svg', '图标渲染为内联 SVG')
 assert.ok(zhDict && zhDict['speech.step'], 'locale 注册带台词模板')
 
 /* 浮层 */
@@ -108,16 +115,18 @@ const firstRow = rows[0]
 assert.equal(firstRow.type.name, 'Row')
 assert.ok(firstRow.children.length >= 1, '行内带控件')
 
-/* 互动分组：状态气泡 / 进度播报 / 闲时问候 / 点击互动四行 */
+/* 分组：外观 / 动作 / 互动 / 素材 四组 */
 const groups = page.children.filter((child) => child && child.props && child.props.className === 'shp-s-group')
-assert.ok(groups.length >= 3, '外观/动作/互动三组')
+assert.equal(groups.length, 4, '外观/动作/互动/素材四组')
 const lookRows = groups[0].children[1].children
 assert.equal(lookRows[0].props.label, t('settings_company'), '外观组首行是今日陪伴')
-const metaRows = groups[groups.length - 1].children[1].children
+const metaRows = groups[2].children[1].children
 const narrateRow = metaRows.find((row) => row && row.props && row.props.label === t('settings_narrate'))
 assert.ok(narrateRow, '互动组有进度播报开关')
 const greetRow = metaRows.find((row) => row && row.props && row.props.label === t('settings_greet'))
 assert.ok(greetRow, '互动组有闲时问候开关')
+const assetRows = groups[3].children[1].children
+assert.ok(assetRows.some((row) => row && row.props && row.props.label === t('settings_skin_upload')), '素材组有上传入口')
 const narrateToggle = narrateRow.children.find((child) => child && child.type && child.type.name === 'Toggle')
 assert.ok(narrateToggle, '进度播报行带 Toggle')
 assert.equal(narrateToggle.props.checked, true, '进度播报默认开')

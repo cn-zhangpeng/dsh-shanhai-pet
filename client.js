@@ -21,6 +21,7 @@ window.__ModuleLoader__.load({
     const STATE_URL = '/api/shanhai-pet/state'
     const MANIFEST_URL = '/api/shanhai-pet/pet.json'
     const SETTINGS_URL = '/api/shanhai-pet/settings'
+    const SKINS_URL = '/api/shanhai-pet/skins'
     const ASSET_BASE = '/api/shanhai-pet/assets/'
     const REPORT_URL = '/api/shanhai-pet/client-report'
     const POLL_MS = 900
@@ -51,6 +52,16 @@ window.__ModuleLoader__.load({
       settings_group_look: '外观',
       settings_group_motion: '动作',
       settings_group_meta: '互动',
+      settings_group_assets: '素材',
+      settings_skin_title: '皮肤',
+      settings_skin_active: '当前使用',
+      settings_skin_use: '启用',
+      settings_skin_upload: '上传皮肤文件夹',
+      settings_skin_uploading: '上传中',
+      settings_skin_done: '上传完成，已启用',
+      settings_skin_failed: '有文件上传失败',
+      settings_skin_hint:
+        '目录结构：pet.json + frames/ 立绘 + anim/ 动画；单文件 ≤ 8MB、至多 120 个；皮肤缺的帧回落内置冉冉；删除请手动移除 skins 下对应文件夹。',
       settings_visible: '显示灵宠',
       settings_visible_hint: '关掉后整个浮层隐藏，随时可以在这里再打开。',
       settings_height: '立绘高度',
@@ -128,6 +139,16 @@ window.__ModuleLoader__.load({
       settings_group_look: 'Appearance',
       settings_group_motion: 'Motion',
       settings_group_meta: 'Interaction',
+      settings_group_assets: 'Assets',
+      settings_skin_title: 'Skin',
+      settings_skin_active: 'In use',
+      settings_skin_use: 'Use',
+      settings_skin_upload: 'Upload skin folder',
+      settings_skin_uploading: 'Uploading',
+      settings_skin_done: 'Uploaded and enabled',
+      settings_skin_failed: 'Some files failed to upload',
+      settings_skin_hint:
+        'Layout: pet.json + frames/ sprites + anim/ animations; ≤ 8MB per file, up to 120; missing frames fall back to the built-in skin; remove a skin by deleting its folder.',
       settings_visible: 'Show the pet',
       settings_visible_hint: 'Turn off to hide the overlay entirely.',
       settings_height: 'Sprite height',
@@ -241,17 +262,19 @@ window.__ModuleLoader__.load({
       '.shp-s-main{flex:1;min-width:0}',
       '.shp-s-label{font-size:13px;line-height:1.5}',
       '.shp-s-hint{margin-top:2px;font-size:11px;line-height:1.5;color:var(--dsw-alias-label-secondary)}',
+      /* 开关配色自带（琥珀 = 开，半透明棕 = 关），不依赖宿主主题变量——
+         --dsw-alias-* 在设置页语境下可能取到意外颜色，纯白轨道会吞掉米白滑块。 */
       '.shp-s-sw{position:relative;flex:none;width:38px;height:22px;padding:0;border-radius:999px;',
-      'border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2);cursor:pointer;',
+      'border:1px solid rgba(93,84,73,.45);background:rgba(93,84,73,.28);cursor:pointer;',
       'transition:background-color .15s ease,border-color .15s ease}',
-      '.shp-s-sw:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}',
-      '.shp-s-sw[aria-checked="true"]{background:var(--dsw-alias-brand-primary);',
-      'border-color:var(--dsw-alias-brand-primary)}',
+      '.shp-s-sw:focus-visible{outline:2px solid #e0a63f;outline-offset:2px}',
+      '.shp-s-sw[aria-checked="true"]{background:#e0a63f;',
+      'border-color:#e0a63f}',
       '.shp-s-sw > span{position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;',
-      'background:#fff;transition:transform .15s ease}',
+      'background:#fffdf6;box-shadow:0 1px 3px rgba(0,0,0,.35);transition:transform .15s ease}',
       '.shp-s-sw[aria-checked="true"] > span{transform:translateX(16px)}',
       '.shp-s-slider{display:flex;flex:0 1 320px;min-width:180px;align-items:center;gap:10px}',
-      '.shp-s-range{flex:1;min-width:120px;width:auto;accent-color:var(--dsw-alias-brand-primary);',
+      '.shp-s-range{flex:1;min-width:120px;width:auto;accent-color:var(--dsw-alias-brand-primary,#e0a63f);',
       'cursor:pointer}',
       '.shp-s-val{min-width:56px;text-align:right;font-size:12px;font-variant-numeric:tabular-nums;',
       'color:var(--dsw-alias-label-secondary)}',
@@ -259,8 +282,8 @@ window.__ModuleLoader__.load({
       'color:var(--dsw-alias-label-secondary)}',
       '.shp-s-foot.shp-s-err{color:var(--dsw-alias-state-error-primary)}',
       '.shp-s-btn{margin-left:auto;padding:5px 12px;border-radius:8px;font-family:inherit;font-size:12px;',
-      'cursor:pointer;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-2);',
-      'border:1px solid var(--dsw-alias-border-l2)}',
+      'cursor:pointer;color:var(--dsw-alias-label-primary,inherit);background:var(--dsw-alias-bg-layer-2,rgba(255,255,255,.08));',
+      'border:1px solid var(--dsw-alias-border-l2,rgba(128,120,110,.45))}',
       '.shp-s-btn:hover{background:var(--dsw-alias-bg-layer-1)}',
     ].join('')
 
@@ -397,6 +420,9 @@ window.__ModuleLoader__.load({
 
     /* 404 过的动画地址（webp 缺失回落到 gif 时用），模块级存活到页面刷新。 */
     const brokenAnims = new Set()
+
+    /* 内置皮肤条目（Host 列表恒在首位；activeSkin 为空或等于 ranran 都算内置生效）。 */
+    const SKIN_BUILTIN_ROW = { name: 'ranran', title: '冉冉' }
 
     function sameSettings(a, b) {
       if (!a || !b) return false
@@ -600,12 +626,25 @@ window.__ModuleLoader__.load({
       )
     }
 
+    /** 读文件为 base64（不带 data: 前缀），皮肤上传用。 */
+    function fileToBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(String(reader.result).split(',')[1] || '')
+        reader.onerror = () => reject(new Error('read failed'))
+        reader.readAsDataURL(file)
+      })
+    }
+
     function PetSettings(props) {
       const t = props.t
       const settings = useSettings()
       const [status, setStatus] = React.useState('idle')
       const [error, setError] = React.useState('')
       const [company, setCompany] = React.useState(null)
+      const [skins, setSkins] = React.useState(null)
+      const [uploadState, setUploadState] = React.useState({ phase: '', done: 0, total: 0, failed: 0 })
+      const fileInputRef = React.useRef(null)
       const pending = React.useRef(null)
       const debounce = React.useRef(0)
       const idleTimer = React.useRef(0)
@@ -623,6 +662,7 @@ window.__ModuleLoader__.load({
             if (mounted && json && json.company) setCompany(json.company)
           })
           .catch(() => {})
+        refreshSkins()
         return () => {
           mounted = false
           alive.current = false
@@ -661,6 +701,85 @@ window.__ModuleLoader__.load({
             }
           })
         }, 260)
+      }
+
+      /* ---------- 自定义皮肤：列表 / 切换 / 上传 ---------- */
+
+      const refreshSkins = () => {
+        fetch(SKINS_URL, { cache: 'no-store', headers: { accept: 'application/json' } })
+          .then((res) => (res.ok ? res.json() : null))
+          .then((json) => {
+            if (alive.current && json && Array.isArray(json.skins)) setSkins(json)
+          })
+          .catch(() => {})
+      }
+
+      const selectSkin = (name) => {
+        fetch(SKINS_URL, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ op: 'select', name }),
+        })
+          .then(async (res) => {
+            if (!res.ok) {
+              if (alive.current) setUploadState({ phase: 'failed', done: 0, total: 0, failed: 0 })
+              return
+            }
+            const json = await res.json()
+            if (json && json.settings) publishSettings(json.settings)
+            refreshSkins()
+          })
+          .catch(() => {
+            if (alive.current) setUploadState({ phase: 'failed', done: 0, total: 0, failed: 0 })
+          })
+      }
+
+      const relativePathOf = (file) => String(file.webkitRelativePath || file.name).replace(/\\/g, '/')
+
+      const uploadSkin = async (fileList) => {
+        const files = Array.from(fileList || []).filter((file) =>
+          /^(pet\.json|frames\/[^/]+\.(png|webp|gif)|anim\/[^/]+\.(webp|gif))$/i.test(relativePathOf(file)),
+        )
+        if (!files.length) {
+          setUploadState({ phase: 'failed', done: 0, total: 0, failed: 0 })
+          return
+        }
+        const first = relativePathOf(files[0])
+        const name = (first.includes('/') ? first.split('/')[0] : 'my-skin').slice(0, 32) || 'my-skin'
+        setUploadState({ phase: 'busy', done: 0, total: files.length, failed: 0 })
+        let done = 0
+        let failed = 0
+        for (const file of files) {
+          try {
+            const data = await fileToBase64(file)
+            const res = await fetch(SKINS_URL, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ op: 'upload', name, path: relativePathOf(file), data }),
+            })
+            if (res.ok) done += 1
+            else failed += 1
+          } catch {
+            failed += 1
+          }
+          if (alive.current) setUploadState({ phase: 'busy', done, total: files.length, failed })
+        }
+        if (failed === 0) {
+          await fetch(SKINS_URL, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ op: 'select', name }),
+          })
+            .then((res) => (res.ok ? res.json() : null))
+            .then((json) => {
+              if (json && json.settings) publishSettings(json.settings)
+            })
+            .catch(() => {})
+          if (alive.current) setUploadState({ phase: 'done', done, total: files.length, failed })
+        } else if (alive.current) {
+          setUploadState({ phase: 'failed', done, total: files.length, failed })
+        }
+        refreshSkins()
       }
 
       const statusText =
@@ -811,6 +930,73 @@ window.__ModuleLoader__.load({
         ),
         h(
           'div',
+          { className: 'shp-s-group' },
+          h('div', { className: 'shp-s-group-t' }, t('settings_group_assets')),
+          h(
+            'div',
+            { className: 'shp-s-card' },
+            (skins && Array.isArray(skins.skins) ? skins.skins : [Object.assign({ title: t('overlay_label') }, SKIN_BUILTIN_ROW)]).map(
+              (skin) =>
+                h(
+                  Row,
+                  { key: skin.name, label: skin.title, hint: skin.name },
+                  skins && (skins.active === skin.name || (skin.name === 'ranran' && skins.active === ''))
+                    ? h('span', { className: 'shp-s-val' }, t('settings_skin_active'))
+                    : h(
+                        'button',
+                        {
+                          type: 'button',
+                          className: 'shp-s-btn',
+                          onClick: () => selectSkin(skin.name),
+                        },
+                        t('settings_skin_use'),
+                      ),
+                ),
+            ),
+            h(
+              Row,
+              {
+                label:
+                  uploadState.phase === 'busy'
+                    ? t('settings_skin_uploading')
+                    : uploadState.phase === 'done'
+                      ? t('settings_skin_done')
+                      : uploadState.phase === 'failed'
+                        ? t('settings_skin_failed')
+                        : t('settings_skin_upload'),
+                hint:
+                  uploadState.phase === 'busy'
+                    ? uploadState.done + ' / ' + uploadState.total
+                    : t('settings_skin_hint'),
+              },
+              h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'shp-s-btn',
+                  disabled: uploadState.phase === 'busy' || undefined,
+                  onClick: () => fileInputRef.current && fileInputRef.current.click(),
+                },
+                t('settings_skin_upload'),
+              ),
+            ),
+            h('input', {
+              key: 'skin-file-input',
+              ref: fileInputRef,
+              type: 'file',
+              multiple: true,
+              webkitdirectory: '',
+              style: { display: 'none' },
+              onChange: (event) => {
+                const list = event.target.files
+                event.target.value = ''
+                uploadSkin(list)
+              },
+            }),
+          ),
+        ),
+        h(
+          'div',
           { className: 'shp-s-foot' + (status === 'error' ? ' shp-s-err' : '') },
           h('span', null, status === 'error' ? t('settings_error') + error : statusText),
           h(
@@ -843,6 +1029,9 @@ window.__ModuleLoader__.load({
       const companyRef = React.useRef(null)
       const shownMilestoneRef = React.useRef(0)
       const [hover, setHover] = React.useState(false)
+      /* 皮肤热切换：轮询发现 activeSkin 变了就重拉帧清单。 */
+      const skinRef = React.useRef(undefined)
+      const reloadManifestRef = React.useRef(null)
 
       /* 诊断上报：宿主的资源路由只收 GET，所以用 query 上报。 */
       const report = React.useRef((payload) => reportToHost(payload)).current
@@ -882,6 +1071,14 @@ window.__ModuleLoader__.load({
               }
               if (json.company) companyRef.current = json.company
               if (json.settings) publishSettings(json.settings)
+              const activeSkin = json.settings ? json.settings.activeSkin : undefined
+              if (activeSkin !== undefined) {
+                if (skinRef.current === undefined) skinRef.current = activeSkin
+                else if (skinRef.current !== activeSkin && reloadManifestRef.current) {
+                  skinRef.current = activeSkin
+                  reloadManifestRef.current()
+                }
+              }
             })
             .catch(() => {})
         }
@@ -972,9 +1169,13 @@ window.__ModuleLoader__.load({
             })
         }
 
+        reloadManifestRef.current = () => {
+          if (alive) load()
+        }
         load()
         return () => {
           alive = false
+          reloadManifestRef.current = null
           window.clearTimeout(timer)
         }
       }, [])
@@ -1180,6 +1381,21 @@ window.__ModuleLoader__.load({
           },
           (slotProps) => h(Overlay, Object.assign({}, slotProps, { t })),
         ),
+      )
+      /* 设置导航图标：爪印（settings.section.icon 按注册 id 匹配，内联渲染）。 */
+      ctx.slots.inject('settings.section.icon', () =>
+        ctx.slots.register({ name: 'settings.section.icon', id: 'shanhai-pet' }, (iconProps) => {
+          const size = iconProps && iconProps.size ? iconProps.size : 16
+          return h(
+            'svg',
+            { width: size, height: size, viewBox: '0 0 16 16', fill: 'currentColor', 'aria-hidden': true },
+            h('ellipse', { cx: 4.1, cy: 4.4, rx: 1.8, ry: 2.2 }),
+            h('ellipse', { cx: 11.9, cy: 4.4, rx: 1.8, ry: 2.2 }),
+            h('ellipse', { cx: 1.5, cy: 8.2, rx: 1.6, ry: 2 }),
+            h('ellipse', { cx: 14.5, cy: 8.2, rx: 1.6, ry: 2 }),
+            h('path', { d: 'M8 6.9c2.7 0 4.8 2 4.8 4.2 0 2-1.9 3.2-4.8 3.2s-4.8-1.2-4.8-3.2c0-2.2 2.1-4.2 4.8-4.2z' }),
+          )
+        }),
       )
       ctx.slots.inject('settings.section', () =>
         ctx.slots.register(
