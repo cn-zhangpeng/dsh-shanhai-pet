@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Shanhai Spirit Pet",
-    "description": "A tiny spirit companion for DeepSeek Harness — she moves with your task state, never reads your chats."
+    "description": "A desktop companion that poses with your task state and narrates progress in her own words. Configure her under Settings → Shanhai Spirit Pet. Reads structured events only (tool names, todo lists) — never your chats."
   }
 }

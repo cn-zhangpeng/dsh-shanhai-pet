@@ -1,8 +1,7 @@
 {
   "name": "dsh-shanhai-pet",
   "version": "0.1.0",
-  "private": true,
-  "description": "任务状态驱动的 DSH 桌宠：推理掐指、改码磨墨、跑命令御风、收工点灯，不读对话内容。",
+  "description": "任务状态驱动的 DSH 桌宠：跟着会话相位换姿势、用台词播报任务进度，不读对话内容。",
   "type": "module",
   "exports": {
     ".": "./index.js",
@@ -19,6 +18,7 @@
     "assets",
     "docs",
     "cordis.patch.yml",
+    "STORE_REVIEW.md",
     "README.md"
   ],
   "dsh": {
@@ -28,5 +28,28 @@
     "client": {
       "platform": "web"
     }
-  }
+  },
+  "engines": {
+    "node": ">=24.9.0",
+    "dsh": ">=0.2.0 <0.3.0"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "plugin",
+    "shanhai",
+    "pet",
+    "overlay",
+    "todo",
+    "narration"
+  ],
+  "author": {
+    "name": "山海紫穹",
+    "url": "https://github.com/cn-zhangpeng"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cn-zhangpeng/dsh-shanhai-pet.git"
+  },
+  "license": "MIT"
 }
