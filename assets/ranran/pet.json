@@ -23,7 +23,7 @@
       "done": { "frames": ["lantern"], "durations": [1400], "loop": false, "fallback": "idle" },
       "failed": { "frames": ["tailhug"], "durations": [1200], "loop": true },
       "waiting": { "frames": ["earperk"], "durations": [900], "loop": true },
-      "poke1": { "frames": ["breathopen_closed"], "durations": [1200], "loop": true },
+      "poke1": { "frames": ["breathopen_closed", "breathopen"], "durations": [180, 1100], "loop": true },
       "poke2": { "frames": ["earperk"], "durations": [1200], "loop": true },
       "poke3": { "frames": ["tailhug"], "durations": [1200], "loop": true },
       "poke4": { "frames": ["gaze"], "durations": [1200], "loop": true }
