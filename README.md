@@ -39,6 +39,24 @@ DeepSeek Harness 桌宠插件（山海紫穹系列）：一只住在会话旁的
 问候会变成特别台词——"今天是我们相遇的第 100 天，谢谢你的陪伴！"，冉冉还会
 为你点亮一次灯笼。
 
+## 自定义皮肤
+
+想把冉冉换成自己的角色？准备一套皮肤文件夹并在设置页上传即可，**切换即时生效，
+缺的帧自动回落内置冉冉**：
+
+```
+我的皮肤/
+  pet.json        # 帧清单（与内置同格式，width/height 可不同，按比例缩放）
+  frames/         # 立绘帧 PNG（名字与 pet.json 里轨道引用的帧名一致）
+  anim/           # 可选：多帧轨道的循环动画 webp
+```
+
+- 设置页 → 素材 → **上传皮肤文件夹**（选整个文件夹），传完自动启用；
+  也可以直接把文件夹放进 `$DSH_HOME/shanhai-pet/skins/`，设置页会扫描出来
+- 上传限额：单文件 ≤ 8MB、每套 ≤ 120 个文件
+- 切换：素材组里点"启用"；切回内置选"内置冉冉"
+- 删除皮肤：手动移除 `skins/` 下对应文件夹
+
 ## 特性
 
 - 数据来自 DSH 会话的**结构化事件**（`session/event` 的 `turn/start` / `step/start` /
@@ -53,6 +71,8 @@ DeepSeek Harness 桌宠插件（山海紫穹系列）：一只住在会话旁的
   写回 `$DSH_HOME/shanhai-pet/settings.json`，多窗口同步
 - 闲时问候 + 相识天数：按时段打招呼，副行带"相遇第 N 天 · 今天已陪 X 分钟"；
   里程碑日（1/7/30/100/200/365/500/1000 天）第一次问候有点灯庆祝的小惊喜
+- **自定义皮肤**：设置页上传自己的 pet.json + 立绘 + 动画（或手动放进 skins 目录），
+  即点即换，缺帧回落内置冉冉
 - 深浅色主题自适应（使用 DSW 设计变量）；子代理会话不驱动灵宠
 
 ## 兼容性
@@ -70,7 +90,7 @@ DeepSeek Harness 桌宠插件（山海紫穹系列）：一只住在会话旁的
 
 | 能力 | 声明 | 具体行为 |
 |---|---|---|
-| 文件 | 仅自身数据文件 | 写入仅限 `$DSH_HOME/shanhai-pet/` 下两个文件：`settings.json`（外观设置）与 `company.json`（陪伴时长与相遇日期），均为 tmp + rename 原子写；读取仅限插件自带的帧图 / 帧清单 / locale |
+| 文件 | 仅自身数据文件 | 写入仅限 `$DSH_HOME/shanhai-pet/` 下：`settings.json`（外观设置）、`company.json`（陪伴时长与相遇日期）、`skins/**`（用户上传的自定义皮肤），均为 tmp + rename 原子写；读取仅限插件自带素材、locale 与上述数据 |
 | 数据读取边界 | 只读结构化字段 | 订阅会话事件的事件类型、工具名、工具参数白名单字段（`file_path` / `path` / `pattern` / `query` / `url` / `command`）、todo 清单条目与回合结束原因；**不读消息正文**，播报台词里的步骤文字截断到 24 字 |
 | 网络 | 仅同源本地 API | Host 半在 DSH 的 `webServer` 上注册 `/api/shanhai-pet/*` 只读路由；Client 半用同源 `fetch` 读取。不访问任何外部域名或第三方服务 |
 | 命令 | 无 | 不执行子进程或 shell 命令 |
@@ -88,7 +108,7 @@ dsh plugin --profile web add github:cn-zhangpeng/dsh-shanhai-pet
 
 > 锁定版本安装（更安全，推荐生产环境）：
 > ```bash
-> dsh plugin --profile web add github:cn-zhangpeng/dsh-shanhai-pet#v0.1.0
+> dsh plugin --profile web add github:cn-zhangpeng/dsh-shanhai-pet#v1.0.0
 > ```
 
 更新 / 卸载：

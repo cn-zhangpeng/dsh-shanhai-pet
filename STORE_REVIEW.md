@@ -36,7 +36,7 @@
 
 | 能力 / Capability | 行为 / Behavior |
 |---|---|
-| 文件系统 / Filesystem | 读取仅限插件自带资产（`assets/ranran/*`、`locale/*`）；**唯一写入**是 `$DSH_HOME/shanhai-pet/settings.json`（tmp + rename 原子写）。 |
+| 文件系统 / Filesystem | 读取仅限插件自带资产（`assets/ranran/*`、`locale/*`）；写入仅限 `$DSH_HOME/shanhai-pet/` 下：`settings.json`（设置）、`company.json`（陪伴时长与相遇日期）、`skins/**`（用户上传的自定义皮肤，文件路径白名单 + 大小/数量限额，tmp + rename 原子写）。 |
 | 会话数据 / Session data | 只订阅**结构化字段**：事件类型、工具名、工具参数白名单字段（`file_path` / `path` / `pattern` / `query` / `url` / `command`）、`todo/write` 的清单条目、`turn/end` 的 `reason.kind`。**不读消息正文，不缓存对话。** 播报台词里的步骤文字截断到 24 字。 |
 | 网络 / Network | Host 半在 DSH 自有 `webServer` 上注册只读同源路由 `/api/shanhai-pet/state`、`/pet.json`、`/assets/*` 与 `GET|POST /settings`；Client 半同源 `fetch`。**无外部域名、无第三方 API、无遥测。** |
 | 命令 / Commands | None. 无 `child_process`、无 shell。 |
