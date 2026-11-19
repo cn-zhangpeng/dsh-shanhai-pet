@@ -3,7 +3,8 @@
 ## 她是什么
 
 一只给 DeepSeek Harness 的桌面小灵宠。她住在会话旁边，用姿态跟着任务走：
-你推理她看云，你改代码她磨墨，你跑命令她御风，你收工她点灯。
+你推理她掐指琢磨，你改文件她铺纸研墨，你跑命令她御风赶路，你收工她点亮灯笼——
+气泡上说大白话：琢磨中 / 改文件 / 跑命令 / 干完了。
 
 她能感知的只有"会话的结构化状态"：哪个工具在跑、这一轮成没成。
 她不读取、不缓存、不发送任何消息正文。
@@ -15,7 +16,7 @@ Host 半区订阅两类事件：
 1. `session/event`
    - `turn/start` → `listening`
    - `step/start` → `thinking`
-   - `tool/call` → `tool`（按工具族细分：磨墨 / 御风 / 嗅风 / 望山 / 摆棋 / 分身 / 拾忆 / 观时 / 探脉）
+   - `tool/call` → `tool`（按工具族细分：改文件 / 跑命令 / 读代码 / 查资料 / 理清单 / 派分身 / 翻记忆 / 看日程 / 查插件）
    - `tool/result` → 有错误 `failed`，否则回到 `thinking`
    - `turn/end`：completed → `done`；error / max-tokens / interrupted → `failed`；
      blocked → `waiting`；其余（aborted / forked 等）→ `idle`
@@ -23,6 +24,10 @@ Host 半区订阅两类事件：
    - `reasoning-delta` → `thinking`
    - `text-delta` → `review`
    - 工具执行中不打断 `tool`
+3. `todo/write` → 进度播报台词（不改变相位）
+   - 有 `in_progress` 项 → `state: 'step'`（`n` 为清单位置、`content` 为当前步内容）
+   - 全部 pending → `state: 'plan'`；全部 completed → `state: 'alldone'`
+   - 台词只带结构化字段（kind / state / 计数），文案由 Client 按语言渲染
 
 相位 `done` / `failed` 会在 2.6 秒后自动回落到 `idle`；
 `waiting` 12 秒后回落。子代理会话（`header.origin === 'subagent'`）不驱动灵宠。
@@ -37,16 +42,45 @@ Host 半区订阅两类事件：
   "phase": "tool",
   "since": 1760240000000,
   "updatedAt": 1760240000100,
-  "detail": { "family": "ink", "label": "磨墨", "tool": "edit", "hint": "src/a.js" },
+  "detail": { "family": "ink", "key": "grind", "label": "改文件", "tool": "edit", "hint": "src/a.js" },
+  "speech": { "kind": "todo", "state": "step", "n": 2, "content": "写测试", "done": 1, "total": 3,
+              "at": 1760240000500 },
+  "company": { "date": "2026-11-20", "firstSeenAt": 1760240000000, "minutes": 96,
+               "days": 12, "milestone": 0 },
   "sessions": 1,
   "version": 42,
   "settings": { "visible": true, "height": 250, "right": 24, "bottom": 14,
-                "blink": true, "float": true, "bubble": true, "poke": true }
+                "blink": true, "float": true, "bubble": true, "poke": true, "narrate": true,
+                "greet": true }
 }
 ```
 
 相位部分是只读的。Host 侧只保留最近活跃的一个会话相位用于显示，
 其余会话只用于计数；状态 30 分钟无活动自动过期。
+
+`speech` 是进度播报：`kind` 取 `todo`（清单步骤，state 为 step / plan / alldone）、
+`done`（整轮收工，可带 done/total）、`failed`（整轮失败）、`waiting`（等审批）。
+同一台词 2 秒内不重复；Client 收到后保持 8 秒（`speech.at` 变化重新计时），
+期间气泡优先显示台词，过期回落相位 / 工具 label。单次工具失败只显示
+`出错了` label，不抢台词；`turn/start` 清空清单（与核心 todo 投影按轮清空一致）。
+
+## 每日陪伴与相识天数（company）
+
+Host 在 `GET /api/shanhai-pet/state` 的每次请求上推进陪伴计时：客户端只在浮层可见时轮询，
+所以相邻两次请求间隔 ≤ 15 秒才计入在场时长，间隔更长（浮层隐藏、应用刚打开）不计。
+数据落盘在 `$DSH_HOME/shanhai-pet/company.json`（累计满 30 秒原子写一次），
+持久化 `metAt`（初次相遇时刻，永久保留）；本地日期跨天时今日累计清零、
+`firstSeenAt` 重新起算。state 响应里只带
+`{ date, firstSeenAt, minutes, days, milestone }` 视图：
+`days` 是相遇第 N 天（安装当天为第 1 天），`milestone` 命中里程碑时等于 N，
+否则为 0（里程碑名单：1 / 7 / 30 / 100 / 200 / 365 / 500 / 1000 天）。
+
+闲时问候由渲染层触发：打开后第一次 + 闲置约 30 分钟一次，气泡停留 10 秒，
+文案按时段分桶（清晨/中午/下午/晚上/深夜），副行带"相遇第 N 天 · 今天已陪 X"；
+**里程碑日的第一次问候**换成特别台词（"今天是我们相遇的第 N 天，谢谢你的陪伴！"）
+并用 `done` 轨道（点灯）庆祝，每个里程碑只提醒一次。
+悬停立绘时副行同样显示相识天数与今日陪伴。
+"闲时问候"开关（`greet`）在设置页互动组。
 
 ### 设置
 
@@ -70,6 +104,8 @@ Host 半区订阅两类事件：
 | `float` | true | bool | 呼吸浮动动画 |
 | `bubble` | true | bool | 非待机时头顶显示相位气泡 |
 | `poke` | true | bool | 点击换姿势说台词 |
+| `narrate` | true | bool | 任务进度播报（清单步骤、收工、碰壁台词） |
+| `greet` | true | bool | 闲时温馨问候（打开时一次 + 闲置半小时一次） |
 
 > 注意：`webServer` 的 resource 路由只放行 `GET/HEAD`，所以设置接口用的是
 > `kind: 'exact'` + 原生 `handler(req, res)`，可以自己收 POST body。
@@ -106,7 +142,7 @@ Host 半区订阅两类事件：
 | idle | 吐纳 | anim/idle.webp（睁眼呼吸 + 一次 200ms 闭眼，循环） |
 | listening | 竖耳 | earperk（竖耳） |
 | thinking | 掐指 | divine（掐指推演） |
-| tool | 行法 | 默认 ridewind；有工具族轨道时优先（见上表） |
+| tool | 干活中 | 默认 ridewind；有工具族轨道时优先（见上表） |
 | review | 展卷 | unroll（展卷阅读） |
 | done | 点灯 | lantern（点亮灯笼，播完回落 idle） |
 | failed | 抱尾 | tailhug（抱尾自省，渲染层加灰暗滤镜） |
@@ -144,7 +180,7 @@ Host 半区订阅两类事件：
 模块级 `settingsStore`：改动即时生效、260ms 防抖后自动写回 Host，无需保存按钮。
 
 - 三组卡片：外观（显示 / 立绘高度 / 距右边 / 距底部）、动作（眨眼 / 呼吸浮动）、
-  互动（状态气泡 / 点击互动），底部「恢复默认」。
+  互动（状态气泡 / 进度播报 / 点击互动），底部「恢复默认」。
 - 控件：`role="switch"` + `aria-checked` 的开关、`<input type="range">` 滑杆，
   只用 `--dsw-alias-*` 主题 token，不引入任何宿主包。
 - 文案走 Client locale 服务（`ctx.locale.register`，中英双份）。

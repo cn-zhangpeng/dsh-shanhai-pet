@@ -24,6 +24,12 @@ window.__ModuleLoader__.load({
     const ASSET_BASE = '/api/shanhai-pet/assets/'
     const REPORT_URL = '/api/shanhai-pet/client-report'
     const POLL_MS = 900
+    // 播报台词保持窗口：Host 发出的 speech 在这段时间内顶掉相位 label（轮询间隔 900ms，收尾会晚一拍）。
+    const SPEECH_HOLD_MS = 8000
+    // 闲时问候：打开后第一次（首查 ~5s）+ 闲置半小时一次，每次停留 10s。
+    const GREET_CHECK_MS = 5000
+    const GREET_INTERVAL = 30 * 60 * 1000
+    const GREET_HOLD = 10 * 1000
 
     /* 诊断上报（模块工厂一加载就发一次，确认新代码是否真的进了页面）。 */
     function reportToHost(payload) {
@@ -54,30 +60,64 @@ window.__ModuleLoader__.load({
       settings_bottom: '距底部',
       settings_bottom_hint: '像素；从窗口底边往上量。',
       settings_blink: '眨眼',
-      settings_blink_hint: '坐忘时偶尔闭一下眼（原生动画播放，不闪）；关掉就一直是睁眼帧。',
+      settings_blink_hint: '待机时偶尔闭一下眼（原生动画播放，不闪）；关掉就一直是睁眼帧。',
       settings_float: '呼吸浮动',
-      settings_float_hint: '坐忘时轻微上下起伏。',
+      settings_float_hint: '待机时轻微上下起伏。',
       settings_bubble: '状态气泡',
-      settings_bubble_hint: '非坐忘时在头顶显示当前相位。',
+      settings_bubble_hint: '非待机时在头顶显示当前状态。',
+      settings_narrate: '进度播报',
+      settings_narrate_hint: '她用台词汇报任务做到哪一步（清单步骤、收工、出错）。',
       settings_poke: '点击互动',
       settings_poke_hint: '点她一下会换姿势并说一句话。',
+      settings_greet: '闲时问候',
+      settings_greet_hint: '闲置时偶尔冒个泡：时段问候带当日陪伴时长。',
+      settings_company: '今日陪伴',
+      settings_company_hint: '她可见的时间累计，跨天清零。',
       settings_reset: '恢复默认',
       settings_ready: '设置会即时生效并自动保存',
       settings_saving: '保存中…',
       settings_saved: '已保存',
       settings_error: '保存失败：',
-      'phase.idle': '坐忘',
-      'phase.listening': '竖耳',
-      'phase.thinking': '看云',
-      'phase.tool': '行法',
-      'phase.review': '展卷',
-      'phase.done': '点灯',
-      'phase.failed': '抱尾',
-      'phase.waiting': '歪头',
+      'phase.idle': '发呆',
+      'phase.listening': '听你说',
+      'phase.thinking': '琢磨中',
+      'phase.tool': '干活中',
+      'phase.review': '写答复',
+      'phase.done': '干完了',
+      'phase.failed': '出错了',
+      'phase.waiting': '等你点头',
       poke1: '她眨了眨眼。',
       poke2: '她在听山风。',
       poke3: '她把尾巴蜷了蜷。',
       poke4: '她望向你，又望回屏幕。',
+      'tool.grind': '改文件',
+      'tool.wind': '跑命令',
+      'tool.sniff': '读代码',
+      'tool.gaze': '查资料',
+      'tool.chess': '理清单',
+      'tool.split': '派分身',
+      'tool.recall': '翻记忆',
+      'tool.watch': '看日程',
+      'tool.probe': '查插件',
+      'tool.cast': '干活中',
+      'speech.step': '第 {n} 步：{content}',
+      'speech.plan': '领了 {total} 件事，开工啦',
+      'speech.alldone': '清单清空啦，一共 {total} 步',
+      'speech.done': '这轮做完啦',
+      'speech.failed': '哎呀，这轮碰壁了',
+      'speech.waiting': '在等你点头呢',
+      'speech.progress': '已完成 {done}/{total}',
+      'greet.morning': '早上好呀',
+      'greet.noon': '中午好',
+      'greet.afternoon': '下午好',
+      'greet.evening': '晚上好',
+      'greet.late': '夜深了，早点休息',
+      'greet.milestone': '今天是我们相遇的第 {days} 天，谢谢你的陪伴！',
+      'greet.firstmeet': '初次见面，我是冉冉，请多关照！',
+      'company.today': '相遇第 {days} 天 · 今天已陪 {duration}',
+      'company.fresh': '相遇第 {days} 天 · 今天 {time} 刚刚见面',
+      'greet.hourmin': '{h} 小时 {m} 分钟',
+      'greet.min': '{m} 分钟',
     }
 
     const en = {
@@ -101,26 +141,60 @@ window.__ModuleLoader__.load({
       settings_float: 'Breathing motion',
       settings_float_hint: 'A slow up-and-down drift while idle.',
       settings_bubble: 'Status bubble',
-      settings_bubble_hint: 'Show the current phase above her while busy.',
+      settings_bubble_hint: 'Show what she is up to above her while busy.',
+      settings_narrate: 'Progress narration',
+      settings_narrate_hint: 'She reports task progress in her own words: todo steps, done, snags.',
       settings_poke: 'Click to interact',
       settings_poke_hint: 'Clicking her swaps the pose and says a line.',
+      settings_greet: 'Idle greetings',
+      settings_greet_hint: 'Now and then while idle: a time-of-day hello with today’s companion time.',
+      settings_company: 'Companion time today',
+      settings_company_hint: 'Accumulated while the overlay is visible; resets daily.',
       settings_reset: 'Restore defaults',
       settings_ready: 'Changes apply instantly and save automatically',
       settings_saving: 'Saving…',
       settings_saved: 'Saved',
       settings_error: 'Save failed: ',
-      'phase.idle': 'Sitting still',
-      'phase.listening': 'Ears up',
-      'phase.thinking': 'Watching clouds',
-      'phase.tool': 'Casting',
-      'phase.review': 'Unrolling scroll',
-      'phase.done': 'Lighting the lantern',
-      'phase.failed': 'Hugging tail',
-      'phase.waiting': 'Head tilt',
+      'phase.idle': 'Idling',
+      'phase.listening': 'Listening',
+      'phase.thinking': 'Thinking',
+      'phase.tool': 'Working',
+      'phase.review': 'Writing reply',
+      'phase.done': 'All done',
+      'phase.failed': 'Failed',
+      'phase.waiting': 'Waiting for you',
       poke1: 'She blinks at you.',
       poke2: 'She is listening to the mountain wind.',
       poke3: 'She curls her tail.',
       poke4: 'She looks at you, then back at the screen.',
+      'tool.grind': 'Editing files',
+      'tool.wind': 'Running commands',
+      'tool.sniff': 'Reading code',
+      'tool.gaze': 'Searching the web',
+      'tool.chess': 'Planning tasks',
+      'tool.split': 'Delegating',
+      'tool.recall': 'Searching memory',
+      'tool.watch': 'Checking schedule',
+      'tool.probe': 'Inspecting plugins',
+      'tool.cast': 'Working',
+      'speech.step': 'Step {n}: {content}',
+      'speech.plan': 'Took {total} tasks — getting started.',
+      'speech.alldone': 'List cleared, {total} steps in all.',
+      'speech.done': 'All done for this round.',
+      'speech.failed': 'This round hit a snag.',
+      'speech.waiting': 'Waiting for your go-ahead.',
+      'speech.progress': '{done}/{total} completed',
+      'greet.morning': 'Good morning',
+      'greet.noon': 'Good afternoon',
+      'greet.afternoon': 'Good afternoon',
+      'greet.evening': 'Good evening',
+      'greet.late': 'It’s getting late — get some rest',
+      'greet.milestone': 'Day {days} of our journey — thank you for being here!',
+      'greet.firstmeet': 'Nice to meet you — I am Ranran. Please take good care of me!',
+      'company.today': 'Day {days} · {duration} together today',
+      'company.fresh': 'Day {days} — just met today at {time}',
+      'greet.hourmin': '{h} h {m} min',
+      'greet.min': '{m} min',
     }
 
     const CSS = [
@@ -135,7 +209,9 @@ window.__ModuleLoader__.load({
       '.shp-root.shp-static .shp-pet:hover{transform:none}',
       '.shp-img{height:250px;width:165px;display:block;transform-origin:50% 100%}',
       '.shp-root.shp-float.shp-idle .shp-img{animation:shp-float 5.2s ease-in-out infinite}',
-      '.shp-bubble{position:absolute;right:12px;bottom:calc(100% + 4px);max-width:200px;background:#fffdf6;',
+      /* 气泡右缘压在头顶上方：尾巴（右缘内 14px）正好指向头部中心（距右边约 82px），
+         短台词（"发呆"）也不会窄到让尾巴悬空。 */
+      '.shp-bubble{position:absolute;right:63px;bottom:calc(100% + 4px);max-width:200px;background:#fffdf6;',
       'border:1.5px solid #5d5449;border-radius:10px 10px 2px 10px;padding:6px 10px;color:#4a4038;',
       'font-size:12px;line-height:1.35;box-shadow:0 4px 14px rgba(0,0,0,.12);pointer-events:none;',
       'animation:shp-in .25s ease}',
@@ -200,6 +276,8 @@ window.__ModuleLoader__.load({
       float: true,
       bubble: true,
       poke: true,
+      narrate: true,
+      greet: true,
     }
 
     const LIMITS = {
@@ -228,7 +306,90 @@ window.__ModuleLoader__.load({
         float: bool('float'),
         bubble: bool('bubble'),
         poke: bool('poke'),
+        narrate: bool('narrate'),
+        greet: bool('greet'),
       }
+    }
+
+    /* ---------- 进度播报：Host 发结构化数据，这里按语言渲染成台词 ---------- */
+
+    /** 模板占位符替换：{n}/{content}/{done}/{total}，缺参原样保留。 */
+    function fill(template, params) {
+      return String(template || '').replace(/\{(\w+)\}/g, (m, k) =>
+        params && k in params ? String(params[k]) : m,
+      )
+    }
+
+    /** 台词主文案。未知 kind/state 返回 null（气泡回落相位 label）。 */
+    function speechText(t, speech) {
+      if (!speech || !speech.kind) return null
+      if (speech.kind === 'todo') {
+        if (speech.state === 'step') return fill(t('speech.step'), speech)
+        if (speech.state === 'plan') return fill(t('speech.plan'), speech)
+        if (speech.state === 'alldone') return fill(t('speech.alldone'), speech)
+        return null
+      }
+      if (speech.kind === 'done') return fill(t('speech.done'), speech)
+      if (speech.kind === 'failed') return fill(t('speech.failed'), speech)
+      if (speech.kind === 'waiting') return fill(t('speech.waiting'), speech)
+      return null
+    }
+
+    /** 台词副文案：带清单进度的播报追加"已完成几/几"。 */
+    function speechSub(t, speech) {
+      if (!speech || (speech.kind !== 'todo' && speech.kind !== 'done')) return ''
+      if (!Number.isFinite(speech.total) || !speech.total) return ''
+      return fill(t('speech.progress'), speech)
+    }
+
+    /** 相位/工具 label 双语化：按 Host 发的 key 查字典，查不到回落 Host 的中文 label。 */
+    function toolLabel(t, detail) {
+      if (!detail) return ''
+      const key = detail.key ? 'tool.' + detail.key : ''
+      const text = key ? t(key) : ''
+      return text && text !== key ? text : detail.label || ''
+    }
+
+    /* ---------- 闲时问候：时段分桶 + 当日陪伴时长 ---------- */
+
+    function pad2(n) {
+      return String(n).padStart(2, '0')
+    }
+
+    function formatClock(ms) {
+      const d = new Date(ms)
+      return pad2(d.getHours()) + ':' + pad2(d.getMinutes())
+    }
+
+    /** 时段分桶（本地小时）：清晨/中午/下午/晚上/深夜。 */
+    function greetingText(t, hour) {
+      let key
+      if (hour >= 5 && hour < 11) key = 'greet.morning'
+      else if (hour >= 11 && hour < 14) key = 'greet.noon'
+      else if (hour >= 14 && hour < 18) key = 'greet.afternoon'
+      else if (hour >= 18 && hour < 23) key = 'greet.evening'
+      else key = 'greet.late'
+      return t(key)
+    }
+
+    /** 陪伴副文案：相遇第 N 天 · 今天已陪 X；不足 1 分钟算刚刚见面。 */
+    function greetingCompany(t, company) {
+      if (!company || !company.firstSeenAt) return ''
+      const days = Math.max(1, Math.floor(company.days || 1))
+      const time = formatClock(company.firstSeenAt)
+      const minutes = Math.max(0, Math.floor(company.minutes || 0))
+      if (minutes < 1) return fill(t('company.fresh'), { days, time })
+      const h = Math.floor(minutes / 60)
+      const m = minutes % 60
+      const duration = h > 0 ? fill(t('greet.hourmin'), { h, m }) : fill(t('greet.min'), { m })
+      return fill(t('company.today'), { days, duration })
+    }
+
+    /** 里程碑特别问候主文案：相遇首日是初见台词，其余整日子走感谢模板。 */
+    function greetingMilestone(t, days) {
+      const n = Math.max(1, Math.floor(days || 1))
+      if (n === 1) return t('greet.firstmeet')
+      return fill(t('greet.milestone'), { days: n })
     }
 
     /** 模块级单向 store：设置页写入，浮层与页面一起订阅。 */
@@ -444,6 +605,7 @@ window.__ModuleLoader__.load({
       const settings = useSettings()
       const [status, setStatus] = React.useState('idle')
       const [error, setError] = React.useState('')
+      const [company, setCompany] = React.useState(null)
       const pending = React.useRef(null)
       const debounce = React.useRef(0)
       const idleTimer = React.useRef(0)
@@ -454,6 +616,13 @@ window.__ModuleLoader__.load({
         fetchSettings().then((loaded) => {
           if (mounted && loaded) publishSettings(loaded)
         })
+        /* 陪伴时长只拉一次快照，页面开着不刷新（轻微延迟可接受） */
+        fetch(STATE_URL, { cache: 'no-store', headers: { accept: 'application/json' } })
+          .then((res) => (res.ok ? res.json() : null))
+          .then((json) => {
+            if (mounted && json && json.company) setCompany(json.company)
+          })
+          .catch(() => {})
         return () => {
           mounted = false
           alive.current = false
@@ -510,6 +679,14 @@ window.__ModuleLoader__.load({
           h(
             'div',
             { className: 'shp-s-card' },
+            h(
+              Row,
+              {
+                label: t('settings_company'),
+                hint: greetingCompany(t, company) || t('settings_company_hint'),
+              },
+              null,
+            ),
             h(
               Row,
               { label: t('settings_visible'), hint: t('settings_visible_hint') },
@@ -605,6 +782,24 @@ window.__ModuleLoader__.load({
             ),
             h(
               Row,
+              { label: t('settings_narrate'), hint: t('settings_narrate_hint') },
+              h(Toggle, {
+                checked: settings.narrate,
+                label: t('settings_narrate'),
+                onChange: (value) => commit({ narrate: value }),
+              }),
+            ),
+            h(
+              Row,
+              { label: t('settings_greet'), hint: t('settings_greet_hint') },
+              h(Toggle, {
+                checked: settings.greet,
+                label: t('settings_greet'),
+                onChange: (value) => commit({ greet: value }),
+              }),
+            ),
+            h(
+              Row,
               { label: t('settings_poke'), hint: t('settings_poke_hint') },
               h(Toggle, {
                 checked: settings.poke,
@@ -641,6 +836,13 @@ window.__ModuleLoader__.load({
       const [debug, setDebug] = React.useState('')
       const [, bumpAnim] = React.useState(0)
       const pokeTimer = React.useRef(0)
+      /* 台词接收时刻：记本地时钟，避免与 Host 的 at 做跨进程时间比较。 */
+      const speechMark = React.useRef({ at: 0, got: 0 })
+      const [greet, setGreet] = React.useState(null)
+      const lastGreetRef = React.useRef(0)
+      const companyRef = React.useRef(null)
+      const shownMilestoneRef = React.useRef(0)
+      const [hover, setHover] = React.useState(false)
 
       /* 诊断上报：宿主的资源路由只收 GET，所以用 query 上报。 */
       const report = React.useRef((payload) => reportToHost(payload)).current
@@ -674,6 +876,11 @@ window.__ModuleLoader__.load({
             .then((json) => {
               if (!alive || !json || typeof json !== 'object') return
               setState(json)
+              const speech = json.speech
+              if (speech && speech.at && speech.at !== speechMark.current.at) {
+                speechMark.current = { at: speech.at, got: Date.now() }
+              }
+              if (json.company) companyRef.current = json.company
               if (json.settings) publishSettings(json.settings)
             })
             .catch(() => {})
@@ -774,14 +981,46 @@ window.__ModuleLoader__.load({
 
       const phase = state && state.phase ? String(state.phase) : 'idle'
       const detail = state && state.detail ? state.detail : null
+      /* 闲时问候与里程碑：先于轨道选择算好，里程碑当天第一次问候用点灯轨道庆祝。 */
+      const greetLive = Boolean(
+        settings.greet &&
+          settings.bubble &&
+          phase === 'idle' &&
+          greet &&
+          Date.now() - greet.at < GREET_HOLD,
+      )
+      const milestoneGreetLive = Boolean(greetLive && greet && greet.milestone)
       const trackName = manifest ? pickTrack(manifest, phase, detail) : null
       const shownTrack =
-        pokeTrack && manifest && manifest.frames2d && manifest.frames2d.tracks[pokeTrack] ? pokeTrack : trackName
+        pokeTrack && manifest && manifest.frames2d && manifest.frames2d.tracks[pokeTrack]
+          ? pokeTrack
+          : milestoneGreetLive && manifest && manifest.frames2d && manifest.frames2d.tracks.done
+            ? 'done'
+            : trackName
       /* 播放失败过的动画地址记在这里，避免每次重渲染都去撞同一个 404。 */
       const animUrl =
         animUrlsFor(manifest, shownTrack, settings.blink).filter((url) => !brokenAnims.has(url))[0] || null
       const frame = usePlayer(manifest, shownTrack, Boolean(animUrl))
       const phaseLabel = t('phase.' + phase)
+
+      /* 闲时问候：打开后第一次 + 闲置半小时一次；干活时闭嘴。
+         里程碑日（相遇第 N 天）的第一次问候换成特别台词，每个里程碑只提醒一次。 */
+      React.useEffect(() => {
+        if (!settings.greet) return undefined
+        const timer = window.setInterval(() => {
+          if (phase !== 'idle') return
+          if (Date.now() - lastGreetRef.current < GREET_INTERVAL) return
+          const comp = companyRef.current
+          let milestone = 0
+          if (comp && comp.milestone && shownMilestoneRef.current !== comp.milestone) {
+            milestone = comp.milestone
+            shownMilestoneRef.current = milestone
+          }
+          lastGreetRef.current = Date.now()
+          setGreet({ at: Date.now(), milestone })
+        }, GREET_CHECK_MS)
+        return () => window.clearInterval(timer)
+      }, [phase, settings.greet])
 
       /* 只在"该有立绘却没有"时上报一次，定位是没渲染还是被挤出视口。 */
       const petRef = React.useRef(null)
@@ -820,9 +1059,43 @@ window.__ModuleLoader__.load({
         }, 3600)
       }
 
-      const showBubble = settings.bubble && (Boolean(poke) || phase !== 'idle')
-      const bubbleText = poke || (detail && detail.label) || phaseLabel
-      const bubbleSub = debug || (!poke && detail && detail.hint ? detail.hint : '')
+      /* 气泡台词优先级：poke > 进度播报 > 悬停陪伴 > 闲时问候 > 工具/相位 label。 */
+      const speech = state && state.speech
+      const speechLive = Boolean(
+        settings.narrate &&
+          speech &&
+          speech.at &&
+          speechMark.current.at === speech.at &&
+          Date.now() - speechMark.current.got < SPEECH_HOLD_MS,
+      )
+      const narrateText = speechLive ? speechText(t, speech) : null
+      const greetText = greetLive
+        ? milestoneGreetLive
+          ? greetingMilestone(t, greet.milestone)
+          : greetingText(t, new Date().getHours())
+        : null
+      /* 悬停立绘：闲置时冒时段问候，干活时在当前 label 下补一行陪伴时长。 */
+      const hoverLive = Boolean(hover && !poke && !narrateText)
+      const hoverText = hoverLive && phase === 'idle' ? greetingText(t, new Date().getHours()) : null
+      const showBubble =
+        settings.bubble &&
+        (Boolean(poke) || phase !== 'idle' || Boolean(narrateText) || hoverLive || Boolean(greetText))
+      const bubbleText =
+        poke ||
+        narrateText ||
+        hoverText ||
+        greetText ||
+        (detail && detail.key ? toolLabel(t, detail) : phaseLabel)
+      const bubbleSub =
+        debug ||
+        (!poke &&
+          (narrateText
+            ? speechSub(t, speech)
+            : hoverLive || greetText
+              ? greetingCompany(t, state && state.company)
+              : detail && detail.hint
+                ? detail.hint
+                : ''))
       const frames2d = (manifest && manifest.frames2d) || {}
       const frameDir = frames2d.framesDir || 'frames/'
       const aspect =
@@ -856,6 +1129,8 @@ window.__ModuleLoader__.load({
               ref: petRef,
               className: 'shp-pet',
               onClick: settings.poke ? onPoke : undefined,
+              onMouseEnter: () => setHover(true),
+              onMouseLeave: () => setHover(false),
               title: t('overlay_label'),
             },
             animUrl
@@ -919,7 +1194,18 @@ window.__ModuleLoader__.load({
       )
     }
 
-    module.exports = { inject: ['slots', 'locale'], apply, animUrlFor, animUrlsFor }
+    module.exports = {
+      inject: ['slots', 'locale'],
+      apply,
+      animUrlFor,
+      animUrlsFor,
+      speechText,
+      speechSub,
+      toolLabel,
+      greetingText,
+      greetingCompany,
+      greetingMilestone,
+    }
     return module.exports
   },
 })

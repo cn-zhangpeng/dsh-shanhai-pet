@@ -21,6 +21,8 @@ const {
   settingsFile,
   writeSettings,
   readSettings,
+  readCompany,
+  tickCompany,
   DEFAULT_SETTINGS,
 } = await import('../index.js')
 
@@ -32,6 +34,11 @@ assert.equal(clamped.right, 0, '负偏移夹到 0')
 assert.equal('blinkMs' in clamped, false, '闭眼时长已随原生动画移除')
 assert.equal(clamped.blink, true, '非布尔字段保留默认值')
 assert.equal(clamped.poke, false, '布尔字段照单接收')
+assert.equal(DEFAULT_SETTINGS.narrate, true, '进度播报默认开')
+assert.equal(normalizeSettings({ narrate: false }).narrate, false, '播报开关可关')
+assert.equal(normalizeSettings({ narrate: 'yes' }).narrate, true, '坏类型回落默认开')
+assert.equal(DEFAULT_SETTINGS.greet, true, '闲时问候默认开')
+assert.equal(normalizeSettings({ greet: false }).greet, false, '问候开关可关')
 assert.equal(normalizeSettings({ height: 320 }, { ...DEFAULT_SETTINGS, visible: false }).height, 320)
 
 /* ---- DSH home 解析 ---- */
@@ -67,7 +74,8 @@ emit('tool/call', {
   arguments: JSON.stringify({ file_path: 'src/a.js' }),
 })
 assert.equal(phase(), 'tool', 'tool/call -> tool')
-assert.equal(tracker.snapshot().detail.label, '磨墨')
+assert.equal(tracker.snapshot().detail.label, '改文件')
+assert.equal(tracker.snapshot().detail.key, 'grind', '工具族带双语 key')
 assert.equal(tracker.snapshot().detail.hint, 'src/a.js')
 
 tracker.onStream(chunk('text-delta'))
@@ -110,7 +118,94 @@ assert.equal(phase(), 'waiting', '子代理会话不驱动灵宠')
 
 assert.equal(familyOf('web_search').family, 'gaze')
 assert.equal(familyOf('todo_write').family, 'chess')
+assert.equal(familyOf('todo_write').key, 'chess', 'familyOf 带双语 key')
+assert.equal(familyOf('compress').key, 'recall', '同族不同动作 key 不同')
 assert.equal(hintOf('edit', JSON.stringify({ path: 'a/b.txt' })), 'a/b.txt')
+
+/* ---- 进度播报投影：todo/write / turn/end → 结构化台词 ---- */
+const speech = () => tracker.snapshot().speech
+
+emit('todo/write', {
+  todos: [
+    { content: '读代码', status: 'completed' },
+    { content: '写测试', status: 'in_progress' },
+    { content: '跑烟测', status: 'pending' },
+  ],
+})
+assert.equal(speech().kind, 'todo', 'todo/write 出台词')
+assert.equal(speech().state, 'step', '有 in_progress → step')
+assert.equal(speech().n, 2, '步骤序号按清单位置')
+assert.equal(speech().content, '写测试', '当前步内容')
+assert.equal(speech().done, 1, '已完成计数')
+assert.equal(speech().total, 3, '清单总数')
+assert.ok(speech().at > 0, '台词带时间戳')
+
+emit('todo/write', { todos: [{ content: '踩点', status: 'pending' }, { content: '布阵', status: 'pending' }] })
+assert.equal(speech().state, 'plan', '全未开始 → plan')
+
+emit('todo/write', { todos: [{ content: '踩点', status: 'completed' }, { content: '布阵', status: 'completed' }] })
+assert.equal(speech().state, 'alldone', '全完成 → alldone')
+
+const alldoneAt = speech().at
+emit('todo/write', { todos: [{ content: '踩点', status: 'completed' }, { content: '布阵', status: 'completed' }] })
+assert.equal(speech().at, alldoneAt, '同内容台词 2s 内不重复')
+
+emit('turn/start', { turn: 4 })
+emit('turn/end', { turn: 4, reason: { kind: 'completed' } })
+assert.equal(speech().kind, 'done', '无清单收工 → done 台词')
+assert.equal(speech().total, undefined, '无清单不带进度计数')
+
+emit('turn/start', { turn: 5 })
+emit('todo/write', { todos: [{ content: '磨剑', status: 'in_progress' }] })
+emit('tool/call', { turn: 5, step: 1, callId: 'c5', name: 'bash', arguments: '{}' })
+emit('tool/result', { turn: 5, step: 1, message: { toolCallId: 'c5' }, error: { name: 'E', code: 'X' } })
+assert.equal(speech().kind, 'todo', '单次工具出错不抢台词（气泡走出错了 label，只有整轮失败才播报）')
+
+emit('turn/end', { turn: 6, reason: { kind: 'blocked' } })
+assert.equal(speech().kind, 'waiting', '等待审批 → waiting 台词')
+
+emit('turn/start', { turn: 7 })
+emit('todo/write', { todos: [{ content: '扫地', status: 'pending' }] })
+emit('turn/end', { turn: 7, reason: { kind: 'completed' } })
+assert.equal(speech().kind, 'done', '收工带清单进度')
+assert.equal(speech().done, 0, '清单 0/1 完成')
+assert.equal(speech().total, 1, '清单总数 1')
+
+/* ---- 每日陪伴计时（tickCompany 纯函数）---- */
+const t0 = new Date(2026, 10, 20, 9, 0, 0).getTime()
+const fresh = tickCompany(null, t0)
+assert.ok(/^\d{4}-\d{2}-\d{2}$/.test(fresh.date), 'date 是本地 YYYY-MM-DD')
+assert.equal(fresh.accumulatedMs, 0, '首见不计时长')
+assert.equal(fresh.firstSeenAt, t0, '首见时刻即今日陪伴起点')
+assert.equal(fresh.metAt, t0, '初见时刻即相遇时刻')
+assert.equal(fresh.days, 1, '安装当天是相遇第 1 天')
+assert.equal(fresh.milestone, 1, '第 1 天本身是里程碑')
+assert.equal(tickCompany(fresh, t0 + 1000).accumulatedMs, 1000, '窗口内累计 1s')
+const gapped = tickCompany(tickCompany(fresh, t0 + 1000), t0 + 61000)
+assert.equal(gapped.accumulatedMs, 1000, '间隔超 15s 不累计（浮层隐藏/刚打开）')
+assert.equal(tickCompany(gapped, t0 + 61500).accumulatedMs, 1500, '恢复轮询后继续累计')
+const weekLater = tickCompany(fresh, new Date(2026, 10, 26, 9, 0, 0).getTime())
+assert.equal(weekLater.metAt, t0, '相遇时刻永久保留')
+assert.equal(weekLater.days, 7, '跨 6 天后是相遇第 7 天')
+assert.equal(weekLater.milestone, 7, '第 7 天是里程碑')
+assert.equal(weekLater.accumulatedMs, 0, '跨天今日清零')
+const day8 = tickCompany(weekLater, new Date(2026, 10, 27, 9, 0, 0).getTime())
+assert.equal(day8.days, 8, '第 8 天')
+assert.equal(day8.milestone, 0, '非里程碑日为 0')
+const day100 = tickCompany(fresh, new Date(2027, 1, 27, 9, 0, 0).getTime())
+assert.equal(day100.days, 100, '第 100 天')
+assert.equal(day100.milestone, 100, '第 100 天是里程碑')
+
+/* 陪伴文件读写往返：metAt 落盘并解析回来 */
+const companyRoundtrip = path.join(home, 'company-roundtrip.json')
+await writeSettings(
+  { date: '2026-11-20', firstSeenAt: t0, accumulatedMs: 60000, metAt: t0 - 86400000 * 3 },
+  companyRoundtrip,
+)
+const loadedCompany = await readCompany(companyRoundtrip)
+assert.equal(loadedCompany.metAt, t0 - 86400000 * 3, 'readCompany 解析相遇时刻')
+assert.equal(loadedCompany.lastPollAt, 0, '读盘后首查不计间隔')
+assert.equal((await readCompany(path.join(home, 'missing-company.json'))) === null, true, '缺失文件回落 null')
 
 // 假 ctx 走一遍 apply：路由注册、事件监听、405 处理、资产服务。
 const routes = []
@@ -188,6 +283,21 @@ assert.equal(ok.status, 200)
 const okBody = await ok.json()
 assert.equal(okBody.ok, true)
 assert.equal(okBody.settings.visible, true, '状态响应里带设置')
+assert.equal(okBody.settings.greet, true, '状态响应带问候开关')
+assert.ok(okBody.company && okBody.company.firstSeenAt > 0, 'state 带 company（首见时刻）')
+assert.ok(/^\d{4}-\d{2}-\d{2}$/.test(okBody.company.date), 'company.date 是本地日期')
+assert.equal(typeof okBody.company.minutes, 'number', 'company.minutes 就位')
+assert.equal(okBody.company.days, 1, '新环境相遇第 1 天')
+assert.equal(okBody.company.milestone, 1, '第 1 天是里程碑')
+
+await new Promise((resolve) => setTimeout(resolve, 1100))
+const companyRes = await route.resource(new Request('http://127.0.0.1/api/shanhai-pet/state'))
+const companyBody = await companyRes.json()
+assert.equal(
+  companyBody.company.firstSeenAt,
+  okBody.company.firstSeenAt,
+  '同一天的陪伴起点不变',
+)
 
 const bad = await route.resource(
   new Request('http://127.0.0.1/api/shanhai-pet/state', { method: 'POST' }),

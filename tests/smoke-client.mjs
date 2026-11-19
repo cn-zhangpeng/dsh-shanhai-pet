@@ -47,14 +47,19 @@ const exported = loaded.factory((name) => {
 assert.equal(Array.from(exported.inject).join(','), 'slots,locale')
 
 const registrations = []
+/* 捕获注册的 zh 字典，让 t() 真正出文案（原来只回 key，测不了台词渲染）。 */
+let zhDict = null
 const ctx = {
   effect: (fn) => {
     const off = fn()
     return typeof off === 'function' ? off : () => {}
   },
   locale: {
-    register: () => () => {},
-    bind: () => (key) => key,
+    register: (ns, dict) => {
+      zhDict = (dict && dict.zh) || null
+      return () => {}
+    },
+    bind: () => (key) => (zhDict && zhDict[key] !== undefined ? zhDict[key] : key),
   },
   slots: {
     inject: (name, callback) => callback(),
@@ -65,8 +70,10 @@ const ctx = {
   },
 }
 exported.apply(ctx)
+const t = (key) => (zhDict && zhDict[key] !== undefined ? zhDict[key] : key)
 
 assert.equal(registrations.length, 2, '浮层与设置页各注册一次')
+assert.ok(zhDict && zhDict['speech.step'], 'locale 注册带台词模板')
 
 /* 浮层 */
 const overlay = registrations.find(([options]) => options.name === 'shell.overlay')
@@ -101,6 +108,20 @@ const firstRow = rows[0]
 assert.equal(firstRow.type.name, 'Row')
 assert.ok(firstRow.children.length >= 1, '行内带控件')
 
+/* 互动分组：状态气泡 / 进度播报 / 闲时问候 / 点击互动四行 */
+const groups = page.children.filter((child) => child && child.props && child.props.className === 'shp-s-group')
+assert.ok(groups.length >= 3, '外观/动作/互动三组')
+const lookRows = groups[0].children[1].children
+assert.equal(lookRows[0].props.label, t('settings_company'), '外观组首行是今日陪伴')
+const metaRows = groups[groups.length - 1].children[1].children
+const narrateRow = metaRows.find((row) => row && row.props && row.props.label === t('settings_narrate'))
+assert.ok(narrateRow, '互动组有进度播报开关')
+const greetRow = metaRows.find((row) => row && row.props && row.props.label === t('settings_greet'))
+assert.ok(greetRow, '互动组有闲时问候开关')
+const narrateToggle = narrateRow.children.find((child) => child && child.type && child.type.name === 'Toggle')
+assert.ok(narrateToggle, '进度播报行带 Toggle')
+assert.equal(narrateToggle.props.checked, true, '进度播报默认开')
+
 /* 动画文件命名约定：anim/<轨道名，冒号换成连字符>.webp */
 assert.equal(typeof exported.animUrlFor, 'function', '导出 animUrlFor 供测试')
 const animManifest = {
@@ -123,5 +144,51 @@ const candidates = exported.animUrlsFor(animManifest, 'idle', true)
 assert.equal(candidates.length, 2, 'webp + gif 两个候选')
 assert.equal(candidates[1], '/api/shanhai-pet/assets/anim/idle.gif')
 assert.deepEqual(Array.from(exported.animUrlsFor(animManifest, 'closed', true)), [], '单帧轨道没有候选')
+
+/* 进度播报台词：Host 发结构化数据，这里按 zh 字典渲染 */
+assert.equal(
+  exported.speechText(t, { kind: 'todo', state: 'step', n: 2, content: '写测试', done: 1, total: 3 }),
+  '第 2 步：写测试',
+  'step 台词带序号与内容',
+)
+assert.equal(exported.speechText(t, { kind: 'todo', state: 'plan', total: 3 }), '领了 3 件事，开工啦')
+assert.equal(exported.speechText(t, { kind: 'todo', state: 'alldone', total: 3 }), '清单清空啦，一共 3 步')
+assert.equal(exported.speechText(t, { kind: 'done' }), '这轮做完啦')
+assert.equal(exported.speechText(t, { kind: 'failed' }), '哎呀，这轮碰壁了')
+assert.equal(exported.speechText(t, { kind: 'waiting' }), '在等你点头呢')
+assert.equal(exported.speechText(t, null), null, '空台词返回 null')
+assert.equal(exported.speechText(t, { kind: 'nope' }), null, '未知 kind 返回 null')
+
+assert.equal(exported.speechSub(t, { kind: 'todo', done: 1, total: 3 }), '已完成 1/3', 'step 副文案带进度')
+assert.equal(exported.speechSub(t, { kind: 'done', done: 2, total: 5 }), '已完成 2/5')
+assert.equal(exported.speechSub(t, { kind: 'failed' }), '', '失败台词没有副文案')
+assert.equal(exported.speechSub(t, { kind: 'todo', state: 'step' }), '', '没有 total 不出副文案')
+
+assert.equal(exported.toolLabel(t, { key: 'grind', label: '改文件' }), '改文件', '按 key 出双语 label')
+assert.equal(exported.toolLabel(t, { label: '改文件' }), '改文件', '没有 key 回落 Host label')
+assert.equal(exported.toolLabel(t, null), '', 'detail 为空返回空串')
+
+/* 闲时问候：时段分桶 + 相识天数格式化 */
+assert.equal(exported.greetingText(t, 7), '早上好呀', '清晨桶')
+assert.equal(exported.greetingText(t, 12), '中午好', '中午桶')
+assert.equal(exported.greetingText(t, 15), '下午好', '下午桶')
+assert.equal(exported.greetingText(t, 20), '晚上好', '晚上桶')
+assert.equal(exported.greetingText(t, 2), '夜深了，早点休息', '深夜桶')
+const metAt = new Date(2026, 10, 20, 14, 30).getTime()
+assert.equal(
+  exported.greetingCompany(t, { firstSeenAt: metAt, minutes: 0, days: 5 }),
+  '相遇第 5 天 · 今天 14:30 刚刚见面',
+)
+assert.equal(
+  exported.greetingCompany(t, { firstSeenAt: metAt, minutes: 83, days: 100 }),
+  '相遇第 100 天 · 今天已陪 1 小时 23 分钟',
+)
+assert.equal(
+  exported.greetingCompany(t, { firstSeenAt: metAt, minutes: 45, days: 3 }),
+  '相遇第 3 天 · 今天已陪 45 分钟',
+)
+assert.equal(exported.greetingCompany(t, null), '', '无 company 数据返回空串')
+assert.equal(exported.greetingMilestone(t, 1), '初次见面，我是冉冉，请多关照！', '首日是初见台词')
+assert.equal(exported.greetingMilestone(t, 100), '今天是我们相遇的第 100 天，谢谢你的陪伴！')
 
 console.log('SMOKE_CLIENT_OK')
