@@ -11,7 +11,8 @@
  *       只读暴露给渲染层。
  */
 
-import { readFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -19,8 +20,15 @@ const STATE_PATH = '/api/shanhai-pet/state'
 const MANIFEST_PATH = '/api/shanhai-pet/pet.json'
 const ASSETS_PREFIX = '/api/shanhai-pet/assets'
 const REPORT_PATH = '/api/shanhai-pet/client-report'
+const SETTINGS_PATH = '/api/shanhai-pet/settings'
 const ASSET_ROOT = fileURLToPath(new URL('./assets/ranran/', import.meta.url))
-const FRAME_FILE = /^[a-z0-9_-]+\/[a-z0-9_-]+\.png$/i
+// frames/<name>.png 逐帧图；anim/<name>.webp|gif 烘焙好的循环动画（浏览器原生播放）。
+const ASSET_FILE = /^[a-z0-9_-]+\/[a-z0-9_-]+\.(png|webp|gif)$/i
+const ASSET_TYPES = {
+  png: 'image/png',
+  webp: 'image/webp',
+  gif: 'image/gif',
+}
 const SETTLE_MS = 2600
 const WAIT_SETTLE_MS = 12000
 const TTL_MS = 30 * 60 * 1000
@@ -70,6 +78,86 @@ export function hintOf(name, args) {
     pick('command') ||
     (typeof args === 'string' ? args : '')
   return String(raw || '').replace(/\s+/g, ' ').trim().slice(0, 42)
+}
+
+/* ---------- 外观设置：持久化在 $DSH_HOME/shanhai-pet/settings.json ---------- */
+
+/**
+ * 设置默认值。Client 半区各存一份同样的表，字段名必须一一对应；
+ * 全部只影响渲染层，不改变相位投影。
+ */
+export const DEFAULT_SETTINGS = Object.freeze({
+  visible: true, // 浮层总开关
+  height: 250, // 立绘高度 px（宽度按原图比例换算）
+  right: 24, // 距视口右边缘 px
+  bottom: 14, // 距视口底部 px
+  blink: true, // 坐忘时眨眼（时长烘在 anim/idle.webp 里）
+  float: true, // 坐忘时呼吸浮动
+  bubble: true, // 非 idle 相位的气泡
+  poke: true, // 点击互动
+})
+
+/** 数值项取值范围，越界按边界夹取。 */
+const NUMERIC_LIMITS = {
+  height: [96, 640],
+  right: [0, 4000],
+  bottom: [0, 4000],
+}
+
+function clampNumber(value, fallback, [min, max]) {
+  const num = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(num)) return fallback
+  return Math.min(max, Math.max(min, Math.round(num)))
+}
+
+/** 把任意输入收敛成一份合法设置，缺失或坏值回落 base / 默认值。 */
+export function normalizeSettings(input, base = DEFAULT_SETTINGS) {
+  const src = input && typeof input === 'object' ? input : {}
+  const seed = base && typeof base === 'object' ? base : DEFAULT_SETTINGS
+  const bool = (key) => (typeof src[key] === 'boolean' ? src[key] : seed[key] !== false)
+  const num = (key) => clampNumber(src[key], seed[key], NUMERIC_LIMITS[key])
+  return {
+    visible: bool('visible'),
+    height: num('height'),
+    right: num('right'),
+    bottom: num('bottom'),
+    blink: bool('blink'),
+    float: bool('float'),
+    bubble: bool('bubble'),
+    poke: bool('poke'),
+  }
+}
+
+/** DSH home：`$DSH_HOME` 优先（支持 `~`），缺省 `~/.dsh`，与同族插件一致。 */
+export function resolveDshHome(env = process.env, home = homedir()) {
+  const raw = env && typeof env.DSH_HOME === 'string' ? env.DSH_HOME.trim() : ''
+  if (!raw) return path.join(home, '.dsh')
+  if (raw === '~') return home
+  if (raw.startsWith('~/') || raw.startsWith('~\\')) return path.join(home, raw.slice(2))
+  return path.isAbsolute(raw) ? raw : path.join(process.cwd(), raw)
+}
+
+/** 设置文件路径。 */
+export function settingsFile(env = process.env, home = homedir()) {
+  return path.join(resolveDshHome(env, home), 'shanhai-pet', 'settings.json')
+}
+
+/** 容错读：文件缺失或损坏都回落默认值，绝不让坏 JSON 挡住浮层。 */
+export async function readSettings(file = settingsFile()) {
+  try {
+    const text = await readFile(file, 'utf8')
+    return normalizeSettings(JSON.parse(text))
+  } catch {
+    return Object.assign({}, DEFAULT_SETTINGS)
+  }
+}
+
+/** 原子写：先写临时文件再 rename，避免留下半截 JSON。 */
+export async function writeSettings(settings, file = settingsFile()) {
+  await mkdir(path.dirname(file), { recursive: true })
+  const tmp = file + '.tmp'
+  await writeFile(tmp, JSON.stringify(settings, null, 2) + '\n', 'utf8')
+  await rename(tmp, file)
 }
 
 /**
@@ -253,15 +341,46 @@ function json(body, status = 200) {
   })
 }
 
-function methodNotAllowed() {
+function methodNotAllowed(allow = 'GET, HEAD') {
   return new Response('Method Not Allowed', {
     status: 405,
-    headers: { allow: 'GET, HEAD' },
+    headers: { allow },
   })
 }
 
 function notFound() {
   return new Response('Not Found', { status: 404 })
+}
+
+/** handler 路由用：写一段 JSON 响应。 */
+function sendJson(res, body, head, status = 200) {
+  const text = JSON.stringify(body)
+  const payload = head ? '' : text
+  res.writeHead(status, {
+    'content-type': 'application/json; charset=utf-8',
+    'cache-control': 'no-store',
+    'content-length': Buffer.byteLength(payload),
+  })
+  res.end(payload)
+}
+
+/** handler 路由用：读完整个请求体（设置 patch 很小，64KB 足够）。 */
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = []
+    let size = 0
+    req.on('data', (chunk) => {
+      size += chunk.length
+      if (size > 64 * 1024) {
+        reject(new Error('body too large'))
+        req.destroy()
+        return
+      }
+      chunks.push(chunk)
+    })
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
+    req.on('error', reject)
+  })
 }
 
 /** 声明依赖：等 webServer 服务启动后再 apply，路由才能注册上。 */
@@ -271,6 +390,13 @@ export const inject = ['webServer']
 export function apply(ctx) {
   const tracker = createTracker()
   const clientReports = []
+  let settings = Object.assign({}, DEFAULT_SETTINGS)
+  let settingsWrites = Promise.resolve()
+  readSettings()
+    .then((loaded) => {
+      settings = loaded
+    })
+    .catch(() => {})
 
   const web = ctx.get('webServer')
   if (web) {
@@ -282,7 +408,7 @@ export function apply(ctx) {
           if (request.method !== 'GET' && request.method !== 'HEAD') {
             return methodNotAllowed()
           }
-          return json(tracker.snapshot())
+          return json(Object.assign(tracker.snapshot(), { settings }))
         },
       }),
     )
@@ -325,12 +451,13 @@ export function apply(ctx) {
             return notFound()
           }
           rel = rel.replace(/^\/+/, '')
-          if (!FRAME_FILE.test(rel)) return notFound()
+          if (!ASSET_FILE.test(rel)) return notFound()
+          const ext = rel.slice(rel.lastIndexOf('.') + 1).toLowerCase()
           try {
             const buf = await readFile(path.join(ASSET_ROOT, rel))
             return new Response(buf, {
               headers: {
-                'content-type': 'image/png',
+                'content-type': ASSET_TYPES[ext] || 'application/octet-stream',
                 'cache-control': 'no-cache',
               },
             })
@@ -361,6 +488,51 @@ export function apply(ctx) {
             return json({ ok: true, reports: clientReports.slice() })
           }
           return methodNotAllowed()
+        },
+      }),
+    )
+
+    ctx.effect(() =>
+      web.register({
+        kind: 'exact',
+        path: SETTINGS_PATH,
+        /* 资源路由只放行 GET/HEAD，写设置得用原生的 handler 路由。 */
+        handler: async (req, res) => {
+          const method = String(req.method || 'GET').toUpperCase()
+          if (method === 'GET' || method === 'HEAD') {
+            sendJson(res, { ok: true, settings }, method === 'HEAD')
+            return
+          }
+          if (method !== 'POST') {
+            res.writeHead(405, { allow: 'GET, HEAD, POST' })
+            res.end('Method Not Allowed')
+            return
+          }
+          let body = null
+          try {
+            body = JSON.parse(await readBody(req))
+          } catch {
+            sendJson(res, { ok: false, error: 'invalid json' }, false, 400)
+            return
+          }
+          if (!body || typeof body !== 'object' || Array.isArray(body)) {
+            sendJson(res, { ok: false, error: 'invalid body' }, false, 400)
+            return
+          }
+          const next = normalizeSettings(body, settings)
+          /* 串行落盘：连续拖动滑块时后写覆盖前写，不会交错。 */
+          settingsWrites = settingsWrites.then(() => writeSettings(next))
+          let failed = null
+          await settingsWrites.catch((err) => {
+            failed = err
+          })
+          settingsWrites = Promise.resolve()
+          if (failed) {
+            sendJson(res, { ok: false, error: 'write failed: ' + String(failed && failed.message) }, false, 500)
+            return
+          }
+          settings = next
+          sendJson(res, { ok: true, settings }, false)
         },
       }),
     )

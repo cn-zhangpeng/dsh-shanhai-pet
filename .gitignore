@@ -19,3 +19,4 @@ tests/_*.json
 # 豆包生成的原始素材（可由 tests/tools 重新生成）
 tests/new-frames/inbox/
 tests/new-frames/selected/
+tests/out/

@@ -7,8 +7,9 @@
   "frames2d": {
     "width": 344,
     "height": 520,
+    "animDir": "anim/",
     "tracks": {
-      "idle": { "frames": ["breathopen", "breath", "breathopen"], "durations": [3600, 200, 900], "loop": true },
+      "idle": { "frames": ["breathopen", "breathopen_closed", "breathopen"], "durations": [3600, 200, 900], "loop": true },
       "listening": { "frames": ["earperk"], "durations": [900], "loop": true },
       "thinking": { "frames": ["divine"], "durations": [700], "loop": true },
       "tool": { "frames": ["ridewind"], "durations": [700], "loop": true },
@@ -22,7 +23,7 @@
       "done": { "frames": ["lantern"], "durations": [1400], "loop": false, "fallback": "idle" },
       "failed": { "frames": ["tailhug"], "durations": [1200], "loop": true },
       "waiting": { "frames": ["earperk"], "durations": [900], "loop": true },
-      "poke1": { "frames": ["breath"], "durations": [1200], "loop": true },
+      "poke1": { "frames": ["breathopen_closed"], "durations": [1200], "loop": true },
       "poke2": { "frames": ["earperk"], "durations": [1200], "loop": true },
       "poke3": { "frames": ["tailhug"], "durations": [1200], "loop": true },
       "poke4": { "frames": ["gaze"], "durations": [1200], "loop": true }

@@ -39,18 +39,48 @@ Host 半区订阅两类事件：
   "updatedAt": 1760240000100,
   "detail": { "family": "ink", "label": "磨墨", "tool": "edit", "hint": "src/a.js" },
   "sessions": 1,
-  "version": 42
+  "version": 42,
+  "settings": { "visible": true, "height": 250, "right": 24, "bottom": 14,
+                "blink": true, "float": true, "bubble": true, "poke": true }
 }
 ```
 
-只读，无写接口。Host 侧只保留最近活跃的一个会话相位用于显示，
+相位部分是只读的。Host 侧只保留最近活跃的一个会话相位用于显示，
 其余会话只用于计数；状态 30 分钟无活动自动过期。
+
+### 设置
+
+`GET|POST /api/shanhai-pet/settings`
+
+- `GET` / `HEAD` 返回 `{ ok: true, settings }`。
+- `POST` body 为部分字段，Host 只接受下表已知字段、按范围夹取后写入内存并返回生效值；
+  未提交的字段保持不变，类型不对的字段保留旧值。
+- 持久化：`$DSH_HOME/shanhai-pet/settings.json`（缺省 `~/.dsh/shanhai-pet/settings.json`），
+  临时文件 + `rename` 原子替换，写失败返回 500 `write failed: ...`；读不出来回落默认值。
+- 坏 JSON → 400 `invalid json`；body 不是对象 → 400 `invalid body`；
+  非 `GET/HEAD/POST` → 405，响应头 `allow: GET, HEAD, POST`。
+
+| 字段 | 默认 | 范围 | 说明 |
+| --- | --- | --- | --- |
+| `visible` | true | bool | 关掉后整个浮层隐藏（设置页仍可打开） |
+| `height` | 250 | 96–640 | 立绘显示高度（px），宽度按 344×520 比例换算 |
+| `right` | 24 | 0–4000 | 距视口右边（px） |
+| `bottom` | 14 | 0–4000 | 距视口底边（px） |
+| `blink` | true | bool | 待机眨眼（时长烘在动画里；关掉停在睁眼帧） |
+| `float` | true | bool | 呼吸浮动动画 |
+| `bubble` | true | bool | 非待机时头顶显示相位气泡 |
+| `poke` | true | bool | 点击换姿势说台词 |
+
+> 注意：`webServer` 的 resource 路由只放行 `GET/HEAD`，所以设置接口用的是
+> `kind: 'exact'` + 原生 `handler(req, res)`，可以自己收 POST body。
 
 静态资源：
 
 - `GET /api/shanhai-pet/pet.json`：帧清单（`frames2d.tracks` + `frames2d.phases`）。
 - `GET /api/shanhai-pet/assets/frames/<帧名>.png`：帧图；帧名只允许
   `[a-z0-9_-]+`，带路径分隔符或 `..` 一律 404。
+- `GET /api/shanhai-pet/assets/anim/<轨道名>.webp|gif`：烘焙好的循环动画
+  （轨道名里的 `:` 换成 `-`，如 `tool:ink` → `tool-ink`），浏览器原生播放。
 
 调试用：`GET /api/shanhai-pet/client-report?d=<JSON>` 记录客户端上报，
 `GET /api/shanhai-pet/client-report` 回读（仅内存保留最近 30 条）。
@@ -73,7 +103,7 @@ Host 半区订阅两类事件：
 
 | 相位 | 动作意象 | 当前帧轨道 |
 | --- | --- | --- |
-| idle | 吐纳 | breathopen → breath → breathopen（睁眼呼吸，夹杂一次闭眼，循环） |
+| idle | 吐纳 | anim/idle.webp（睁眼呼吸 + 一次 200ms 闭眼，循环） |
 | listening | 竖耳 | earperk（竖耳） |
 | thinking | 掐指 | divine（掐指推演） |
 | tool | 行法 | 默认 ridewind；有工具族轨道时优先（见上表） |
@@ -83,7 +113,22 @@ Host 半区订阅两类事件：
 | waiting | 歪头 | earperk（竖耳等令） |
 
 帧清单在 `assets/ranran/pet.json`（`frames2d.tracks` + `frames2d.phases`），
-帧图在 `assets/ranran/frames/*.png`（344×520）。
+帧图在 `assets/ranran/frames/*.png`（344×520）；多帧轨道另有一张
+`assets/ranran/anim/<轨道名>.webp` 循环动画，浏览器原生播放，缺失时再试同名 `.gif`，
+都没有就回落到静态首帧。
+
+动画有两条产出路径：
+
+- `tests/tools/build_anim.py`：从现有帧图烘焙。相邻停留之间的过渡帧会自动判断：
+  两帧平均差 ≥ 6 时插 2 帧 30ms 交叉淡化，差得很少（如"同一张底片只闭眼"）就硬切，
+  避免眼睛上糊出一层灰影。
+- `tests/tools/video_to_anim.py`：视频模型出的短片 → 抠绿 → 裁边缩放 → WebP/GIF，
+  每个动作的提示词见 [ANIM_PROMPTS.md](ANIM_PROMPTS.md)。
+
+闭眼帧 `frames/breathopen_closed.png` 不是独立生成的（独立生成会和 `breathopen.png`
+差一整张图，眨眼看起来像换照片），而是 `tests/tools/make_blink.py` 从 `breath.png`
+里把睫毛/眼睑按眼角对齐搬过来：脚本按深色块定位两只眼睛、算出缩放+旋转+平移，
+再按椭圆羽化只贴回眼眶。改完帧图要重跑 `build_anim.py` 才会进 `anim/idle.webp`。
 
 新动作帧由豆包按冉冉 base.png 作参考图生成（1280×1920），再用
 `tests/tools/process_frames.py` 从四边洪泛去背、裁切缩放成 344×520 透明底；
@@ -93,8 +138,21 @@ Host 半区订阅两类事件：
 
 伴生灵小蚂蚁（`ant_walk.png`，9 格雪碧图）暂未接入，后续可做伴生层。
 
+## 设置页
+
+在「设置 → 山海灵宠」里（`settings.section` 槽位，`order: 45`），与浮层共用一份
+模块级 `settingsStore`：改动即时生效、260ms 防抖后自动写回 Host，无需保存按钮。
+
+- 三组卡片：外观（显示 / 立绘高度 / 距右边 / 距底部）、动作（眨眼 / 呼吸浮动）、
+  互动（状态气泡 / 点击互动），底部「恢复默认」。
+- 控件：`role="switch"` + `aria-checked` 的开关、`<input type="range">` 滑杆，
+  只用 `--dsw-alias-*` 主题 token，不引入任何宿主包。
+- 文案走 Client locale 服务（`ctx.locale.register`，中英双份）。
+- 浮层每 900ms 轮询 `/state`，响应里带 `settings`，所以多窗口下改了设置，
+  各窗口的灵宠都会跟着变。
+
 ## 已知边界
 
-- 浮层固定在右下角，暂不支持拖动。
-- 无设置页；暂不支持隐藏/召唤。
+- 位置只能从设置页的「距右边 / 距底部」调，暂不支持拖动。
+- 设置是全局单份（`$DSH_HOME/shanhai-pet/settings.json`），不按会话区分。
 - 只跟随"最近活跃会话"，多会话并行时显示最后动过的那个。
