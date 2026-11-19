@@ -264,6 +264,10 @@ function notFound() {
   return new Response('Not Found', { status: 404 })
 }
 
+/** 声明依赖：等 webServer 服务启动后再 apply，路由才能注册上。 */
+export const name = 'dsh-shanhai-pet'
+export const inject = ['webServer']
+
 export function apply(ctx) {
   const tracker = createTracker()
   const clientReports = []
@@ -327,7 +331,7 @@ export function apply(ctx) {
             return new Response(buf, {
               headers: {
                 'content-type': 'image/png',
-                'cache-control': 'public, max-age=3600',
+                'cache-control': 'no-cache',
               },
             })
           } catch {
@@ -375,3 +379,5 @@ export function apply(ctx) {
 
   ctx.effect(() => () => tracker.dispose())
 }
+
+export default { name, inject, apply }

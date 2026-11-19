@@ -205,58 +205,70 @@ window.__ModuleLoader__.load({
         }
       }, [])
 
-      /* 拉帧清单并预载全部帧 */
+      /* 拉帧清单并预载全部帧；启动时 Host 路由可能晚于页面就绪，失败后重试 */
       React.useEffect(() => {
         let alive = true
-        fetch(MANIFEST_URL, { cache: 'no-store', headers: { accept: 'application/json' } })
-          .then((res) => {
-            report({ step: 'manifest-http', status: res.status, ok: res.ok })
-            if (!res.ok) {
-              setDebug('manifest http ' + res.status)
-              return null
-            }
-            return res.json().catch((err) => {
-              report({ step: 'manifest-json-error', message: String(err) })
-              setDebug('manifest json error')
-              return null
-            })
-          })
-          .then((data) => {
-            if (!alive) return
-            if (!data || !data.frames2d) {
-              setDebug('manifest has no frames2d')
-              report({ step: 'manifest-shape', keys: data ? Object.keys(data) : null })
-              return
-            }
-            setManifest(data)
-            setDebug('')
-            report({
-              step: 'manifest-ok',
-              tracks: Object.keys(data.frames2d.tracks || {}).length,
-              framesDir: data.frames2d.framesDir || 'frames/',
-            })
-            const frames2d = data.frames2d
-            const names = new Set()
-            Object.keys(frames2d.tracks || {}).forEach((name) => {
-              const track = frames2d.tracks[name]
-              ;(track.frames || []).forEach((frame) => names.add(frame))
-            })
-            names.forEach((name) => {
-              const img = new Image()
-              img.onerror = () => {
-                report({ step: 'img-error', src: img.src })
-                setDebug('img failed: ' + name)
+        let timer = 0
+        let tries = 0
+
+        const load = () => {
+          if (!alive) return
+          tries += 1
+          fetch(MANIFEST_URL, { cache: 'no-store', headers: { accept: 'application/json' } })
+            .then((res) => {
+              report({ step: 'manifest-http', status: res.status, ok: res.ok })
+              if (!res.ok) {
+                setDebug('manifest http ' + res.status)
+                return null
               }
-              img.onload = () => report({ step: 'img-ok', name })
-              img.src = ASSET_BASE + (frames2d.framesDir || 'frames/') + name + '.png'
+              return res.json().catch((err) => {
+                report({ step: 'manifest-json-error', message: String(err) })
+                setDebug('manifest json error')
+                return null
+              })
             })
-          })
-          .catch((err) => {
-            setDebug('manifest fetch failed')
-            report({ step: 'manifest-fetch-error', message: String(err) })
-          })
+            .then((data) => {
+              if (!alive) return
+              if (!data || !data.frames2d) {
+                setDebug('manifest has no frames2d')
+                report({ step: 'manifest-shape', keys: data ? Object.keys(data) : null })
+                if (tries < 20) timer = window.setTimeout(load, 1000)
+                return
+              }
+              setManifest(data)
+              setDebug('')
+              report({
+                step: 'manifest-ok',
+                tracks: Object.keys(data.frames2d.tracks || {}).length,
+                framesDir: data.frames2d.framesDir || 'frames/',
+              })
+              const frames2d = data.frames2d
+              const names = new Set()
+              Object.keys(frames2d.tracks || {}).forEach((name) => {
+                const track = frames2d.tracks[name]
+                ;(track.frames || []).forEach((frame) => names.add(frame))
+              })
+              names.forEach((name) => {
+                const img = new Image()
+                img.onerror = () => {
+                  report({ step: 'img-error', src: img.src })
+                  setDebug('img failed: ' + name)
+                }
+                img.onload = () => report({ step: 'img-ok', name })
+                img.src = ASSET_BASE + (frames2d.framesDir || 'frames/') + name + '.png'
+              })
+            })
+            .catch((err) => {
+              setDebug('manifest fetch failed')
+              report({ step: 'manifest-fetch-error', message: String(err) })
+              if (tries < 20) timer = window.setTimeout(load, 1000)
+            })
+        }
+
+        load()
         return () => {
           alive = false
+          window.clearTimeout(timer)
         }
       }, [])
 
