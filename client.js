@@ -1213,7 +1213,14 @@ window.__ModuleLoader__.load({
           if (Date.now() - lastGreetRef.current < GREET_INTERVAL) return
           const comp = companyRef.current
           let milestone = 0
-          if (comp && comp.milestone && shownMilestoneRef.current !== comp.milestone) {
+          /* 第 1 天只在真正初次相遇的那个进程里说"初次见面"；之后同一天的打开
+             走普通时段问候，避免每次重开都当成初见。 */
+          if (
+            comp &&
+            comp.milestone &&
+            (comp.milestone !== 1 || comp.firstMeet) &&
+            shownMilestoneRef.current !== comp.milestone
+          ) {
             milestone = comp.milestone
             shownMilestoneRef.current = milestone
           }

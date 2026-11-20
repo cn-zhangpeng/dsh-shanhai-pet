@@ -108,7 +108,7 @@ dsh plugin --profile web add github:cn-zhangpeng/dsh-shanhai-pet
 
 > 锁定版本安装（更安全，推荐生产环境）：
 > ```bash
-> dsh plugin --profile web add github:cn-zhangpeng/dsh-shanhai-pet#v1.0.0
+> dsh plugin --profile web add github:cn-zhangpeng/dsh-shanhai-pet#v1.0.1
 > ```
 
 更新 / 卸载：

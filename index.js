@@ -621,6 +621,8 @@ export const name = 'dsh-shanhai-pet'
 export const inject = ['webServer']
 
 export function apply(ctx) {
+  /* 本次进程启动时刻：用来区分"这个进程里才第一次相遇"（真·初次见面）。 */
+  const startedAt = Date.now()
   const tracker = createTracker()
   const clientReports = []
   let settings = Object.assign({}, DEFAULT_SETTINGS)
@@ -643,6 +645,8 @@ export function apply(ctx) {
       minutes: Math.floor(comp.accumulatedMs / 60000),
       days: comp.days || 1,
       milestone: comp.milestone || 0,
+      /* 相遇时刻落在本进程启动之后 = 这个进程才第一次见到冉冉（初次见面）。 */
+      firstMeet: comp.metAt > 0 && comp.metAt >= startedAt,
     }
   }
 
