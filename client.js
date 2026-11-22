@@ -231,16 +231,19 @@ window.__ModuleLoader__.load({
       '.shp-img{height:250px;width:165px;display:block;transform-origin:50% 100%}',
       '.shp-root.shp-float.shp-idle .shp-img{animation:shp-float 5.2s ease-in-out infinite}',
       /* 气泡右缘压在头顶上方：尾巴（右缘内 14px）正好指向头部中心（距右边约 82px），
-         短台词（"发呆"）也不会窄到让尾巴悬空。 */
-      '.shp-bubble{position:absolute;right:63px;bottom:calc(100% + 4px);max-width:200px;background:#fffdf6;',
+         短台词（"发呆"）也不会窄到让尾巴悬空。width:max-content 让长台词撑开气泡
+         （否则受 .shp-wrap 只有立绘那么宽的限制），再由 max-width 封顶换行，
+         不做省略号截断；上限跟着视口收，窄窗口里不会顶出屏幕左边。 */
+      '.shp-bubble{position:absolute;right:63px;bottom:calc(100% + 4px);width:max-content;max-width:min(260px,calc(100vw - 110px));background:#fffdf6;',
       'border:1.5px solid #5d5449;border-radius:10px 10px 2px 10px;padding:6px 10px;color:#4a4038;',
       'font-size:12px;line-height:1.35;box-shadow:0 4px 14px rgba(0,0,0,.12);pointer-events:none;',
       'animation:shp-in .25s ease}',
       '.shp-bubble:after{content:"";position:absolute;right:14px;bottom:-6px;width:10px;height:10px;',
       'background:#fffdf6;border-right:1.5px solid #5d5449;border-bottom:1.5px solid #5d5449;',
       'transform:rotate(45deg)}',
-      '.shp-bubble-t{font-weight:600}',
-      '.shp-bubble-s{margin-top:2px;color:#8a7f74;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px}',
+      /* 长路径/英文串也按任意位置折行，不撑破气泡 */
+      '.shp-bubble-t{font-weight:600;overflow-wrap:anywhere}',
+      '.shp-bubble-s{margin-top:2px;color:#8a7f74;overflow-wrap:anywhere}',
       '@keyframes shp-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}',
       '@keyframes shp-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}',
       '.shp-failed .shp-img{filter:grayscale(.35) brightness(.92) drop-shadow(0 8px 14px rgba(0,0,0,.18))}',
