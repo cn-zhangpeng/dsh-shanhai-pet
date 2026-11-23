@@ -30,7 +30,10 @@ Host 半区订阅两类事件：
    - 台词只带结构化字段（kind / state / 计数），文案由 Client 按语言渲染
 
 相位 `done` / `failed` 会在 2.6 秒后自动回落到 `idle`；
-`waiting` 12 秒后回落。子代理会话（`header.origin === 'subagent'`）不驱动灵宠。
+`waiting` 12 秒后回落。子代理会话（`header.origin === 'subagent'`）不驱动灵宠——
+会话事件与 `agent/assistant-stream` 流帧两路都按这个规则过滤。另有一层兜底：
+`listening` / `thinking` / `review` 这些会持续吐流帧的相位，若 5 分钟内没有任何更新，
+就判定该会话已经结束并回落 `idle`，避免丢失 `turn/end` 时一直停在"琢磨中"。
 
 ## 接口
 

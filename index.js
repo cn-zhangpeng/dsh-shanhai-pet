@@ -35,6 +35,11 @@ const SETTLE_MS = 2600
 const WAIT_SETTLE_MS = 12000
 const TTL_MS = 30 * 60 * 1000
 const MAX_SESSIONS = 40
+// 会持续吐流帧的相位：模型真在跑时 reasoning/text 分片是连贯的，
+// 静默超过这个时长就判定该会话早已结束（turn/end 丢失时的兜底），
+// 免得灵宠一直停在"琢磨中"直到 30 分钟的 TTL。
+const STREAM_STALE_MS = 5 * 60 * 1000
+const STREAM_PHASES = new Set(['listening', 'thinking', 'review'])
 // 播报：同一条台词 2s 内不重复刷；步骤内容截 24 字，长任务名不挤爆气泡。
 const SPEECH_GAP_MS = 2000
 const SPEECH_TEXT_MAX = 24
@@ -532,6 +537,11 @@ export function createTracker() {
     const agent = payload && payload.agent
     const frame = payload && payload.frame
     if (!agent || !frame || frame.type !== 'chunk' || !frame.chunk) return
+    // 和 onEvent 保持同一套可见性：子代理（mnemon 复盘、subagent 等）的流帧也整体忽略。
+    // 它们的 turn/end 被 onEvent 挡掉，若在这里 mark 了"琢磨中"，就再没人来收，
+    // 灵宠会一直显示在琢磨中（用户看到的现象）。
+    const header = agent.session && agent.session.header
+    if (header && header.origin === 'subagent') return
     const st = get(String(agent.id))
     if (st.phase === 'tool') return
     if (frame.chunk.type === 'reasoning-delta') mark(st, 'thinking', { label: '琢磨中' })
@@ -542,6 +552,10 @@ export function createTracker() {
   function snapshot() {
     prune()
     const st = lastId ? sessions.get(lastId) : null
+    // 兜底：会吐字的相位长时间没有任何更新 → 会话其实已经结束，回落 idle。
+    if (st && STREAM_PHASES.has(st.phase) && Date.now() - st.updatedAt > STREAM_STALE_MS) {
+      mark(st, 'idle', null)
+    }
     return {
       ok: true,
       phase: (st && st.phase) || 'idle',

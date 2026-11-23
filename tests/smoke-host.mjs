@@ -118,6 +118,38 @@ const sub = { id: 'sub-1', header: { origin: 'subagent' } }
 tracker.onEvent(sub, { type: 'turn/start', data: { turn: 1 } })
 assert.equal(phase(), 'waiting', '子代理会话不驱动灵宠')
 
+/* 子代理的流帧同样不能驱动灵宠：mnemon 复盘这类分身会在主任务结束后继续吐字，
+   而它们的 turn/end 被 onEvent 过滤，一旦被 mark 成"琢磨中"就没人收尾。 */
+const subChunk = (type) => ({
+  agent: { id: 'sub-1', session: { id: 'sub-1', header: { origin: 'subagent' } } },
+  frame: {
+    type: 'chunk',
+    attemptId: 'a1',
+    revision: 0,
+    index: 0,
+    time: Date.now(),
+    chunk: { type, index: 0, text: 'x' },
+  },
+})
+const sessionsBefore = tracker.snapshot().sessions
+tracker.onStream(subChunk('reasoning-delta'))
+assert.equal(phase(), 'waiting', '子代理流帧不抢占灵宠')
+assert.equal(tracker.snapshot().sessions, sessionsBefore, '子代理流帧不建会话')
+
+/* 静默兜底：会吐字的相位长时间没有更新 → 判会话已结束，回落 idle。 */
+emit('turn/start', { turn: 8 })
+assert.equal(phase(), 'listening')
+tracker.sessions.get('session-1').updatedAt = Date.now() - 6 * 60 * 1000
+assert.equal(tracker.snapshot().phase, 'idle', '思考相位静默超时 → 回落 idle')
+assert.equal(tracker.sessions.get('session-1').phase, 'idle')
+
+/* tool 相位不做静默兜底：十几分钟的长命令是正常的。 */
+emit('tool/call', { turn: 8, step: 1, callId: 'c9', name: 'pwsh', arguments: '{}' })
+tracker.sessions.get('session-1').updatedAt = Date.now() - 20 * 60 * 1000
+assert.equal(tracker.snapshot().phase, 'tool', 'tool 相位不受静默兜底影响')
+emit('turn/end', { turn: 8, reason: { kind: 'completed' } })
+assert.equal(phase(), 'done', '收尾后正常写 done')
+
 assert.equal(familyOf('web_search').family, 'gaze')
 assert.equal(familyOf('todo_write').family, 'chess')
 assert.equal(familyOf('todo_write').key, 'chess', 'familyOf 带双语 key')
