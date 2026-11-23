@@ -223,12 +223,16 @@ window.__ModuleLoader__.load({
       '.shp-root{position:fixed;right:24px;bottom:14px;z-index:2147483000;pointer-events:none;',
       'user-select:none;-webkit-user-select:none;font-family:inherit}',
       '.shp-wrap{position:relative;display:flex;flex-direction:column;align-items:flex-end}',
-      '.shp-pet{pointer-events:auto;cursor:pointer;transition:transform .25s ease;',
+      /* 点击穿透：整只立绘不接收指针事件，只有头像区 .shp-hit 可点。
+         小屏上立绘即使压住输入框/发送键，立绘之外的区域也能点到底下按钮。 */
+      '.shp-pet{position:relative;display:block;pointer-events:none;cursor:pointer;transition:transform .25s ease;',
       'filter:drop-shadow(0 8px 14px rgba(0,0,0,.18))}',
+      '.shp-hit{position:absolute;left:12%;top:2%;width:76%;height:42%;pointer-events:auto;',
+      'cursor:pointer;-webkit-tap-highlight-color:transparent}',
       '.shp-pet:hover{transform:translateY(-2px)}',
-      '.shp-root.shp-static .shp-pet{cursor:default}',
+      '.shp-root.shp-static .shp-hit{cursor:default}',
       '.shp-root.shp-static .shp-pet:hover{transform:none}',
-      '.shp-img{height:250px;width:165px;display:block;transform-origin:50% 100%}',
+      '.shp-img{height:250px;width:165px;display:block;transform-origin:50% 100%;pointer-events:none}',
       '.shp-root.shp-float.shp-idle .shp-img{animation:shp-float 5.2s ease-in-out infinite}',
       /* 气泡右缘压在头顶上方：尾巴（右缘内 14px）正好指向头部中心（距右边约 82px），
          短台词（"发呆"）也不会窄到让尾巴悬空。width:max-content 让长台词撑开气泡
@@ -458,6 +462,61 @@ window.__ModuleLoader__.load({
       React.useEffect(() => {
         setValue(settingsStore.value)
         return subscribeSettings(setValue)
+      }, [])
+      return value
+    }
+
+    /* ---------- 小屏自适应 ---------- */
+
+    /** 视口尺寸；非浏览器环境（测试/预渲染）返回 0，交给 fitPetSize 跳过封顶。 */
+    function readViewport() {
+      if (typeof window === 'undefined') return { w: 0, h: 0 }
+      return { w: Number(window.innerWidth) || 0, h: Number(window.innerHeight) || 0 }
+    }
+
+    /**
+     * 立绘尺寸：用户设置的 height 是「上限」，再按视口收缩。
+     * 宽度最多占视口 30%，高度最多 38%，窄屏（手机）自动缩到 ~180px 高；
+     * 竖屏转横屏、窗口缩放都会重新计算。
+     */
+    function fitPetSize(height, aspect, viewport) {
+      const ratio = Number.isFinite(aspect) && aspect > 0 ? aspect : 344 / 520
+      const base = Math.min(LIMITS.height[1], Math.max(LIMITS.height[0], Math.round(Number(height) || DEFAULT_SETTINGS.height)))
+      const w = viewport && Number.isFinite(viewport.w) && viewport.w > 0 ? viewport.w : 0
+      const h = viewport && Number.isFinite(viewport.h) && viewport.h > 0 ? viewport.h : 0
+      let fit = base
+      if (w > 0) fit = Math.min(fit, (w * 0.3) / ratio)
+      if (h > 0) fit = Math.min(fit, h * 0.38)
+      fit = Math.max(LIMITS.height[0], Math.round(fit))
+      return { height: fit, width: Math.round(fit * ratio) }
+    }
+
+    function useViewport() {
+      const [value, setValue] = React.useState(readViewport())
+      React.useEffect(() => {
+        if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') return undefined
+        let frame = 0
+        const update = () => {
+          frame = 0
+          setValue(readViewport())
+        }
+        const schedule = () => {
+          if (frame) return
+          frame =
+            typeof window.requestAnimationFrame === 'function'
+              ? window.requestAnimationFrame(update)
+              : window.setTimeout(update, 120)
+        }
+        window.addEventListener('resize', schedule)
+        window.addEventListener('orientationchange', schedule)
+        return () => {
+          window.removeEventListener('resize', schedule)
+          window.removeEventListener('orientationchange', schedule)
+          if (frame) {
+            if (typeof window.cancelAnimationFrame === 'function') window.cancelAnimationFrame(frame)
+            else window.clearTimeout(frame)
+          }
+        }
       }, [])
       return value
     }
@@ -1018,6 +1077,7 @@ window.__ModuleLoader__.load({
     function Overlay(props) {
       const t = props.t
       const settings = useSettings()
+      const viewport = useViewport()
       const [state, setState] = React.useState(null)
       const [manifest, setManifest] = React.useState(null)
       const [poke, setPoke] = React.useState(null)
@@ -1311,6 +1371,8 @@ window.__ModuleLoader__.load({
       const frameDir = frames2d.framesDir || 'frames/'
       const aspect =
         frames2d.height > 0 ? (frames2d.width || 344) / frames2d.height : 344 / 520
+      /* 用户设置的高度只作上限：小屏按视口收缩，避免立绘占掉半个手机屏。 */
+      const petSize = fitPetSize(settings.height, aspect, viewport)
 
       if (!settings.visible) return null
 
@@ -1319,7 +1381,10 @@ window.__ModuleLoader__.load({
         {
           className:
             'shp-root shp-' + phase + (settings.float ? ' shp-float' : '') + (settings.poke ? '' : ' shp-static'),
-          style: { right: settings.right + 'px', bottom: settings.bottom + 'px' },
+          style: {
+            right: 'calc(' + settings.right + 'px + env(safe-area-inset-right, 0px))',
+            bottom: 'calc(' + settings.bottom + 'px + env(safe-area-inset-bottom, 0px))',
+          },
         },
         h('style', { key: 'css', dangerouslySetInnerHTML: { __html: CSS } }),
         h(
@@ -1339,10 +1404,7 @@ window.__ModuleLoader__.load({
               key: 'pet',
               ref: petRef,
               className: 'shp-pet',
-              onClick: settings.poke ? onPoke : undefined,
-              onMouseEnter: () => setHover(true),
-              onMouseLeave: () => setHover(false),
-              title: t('overlay_label'),
+              style: { width: petSize.width + 'px', height: petSize.height + 'px' },
             },
             animUrl
               ? h('img', {
@@ -1358,7 +1420,7 @@ window.__ModuleLoader__.load({
                     brokenAnims.add(animUrl)
                     bumpAnim((n) => n + 1)
                   },
-                  style: { height: settings.height + 'px', width: Math.round(settings.height * aspect) + 'px' },
+                  style: { height: petSize.height + 'px', width: petSize.width + 'px' },
                 })
               : frame
                 ? h('img', {
@@ -1368,11 +1430,20 @@ window.__ModuleLoader__.load({
                     alt: '',
                     draggable: false,
                     decoding: 'sync',
-                    style: { height: settings.height + 'px', width: Math.round(settings.height * aspect) + 'px' },
+                    style: { height: petSize.height + 'px', width: petSize.width + 'px' },
                   })
                 : debug
                   ? h('div', { className: 'shp-fallback' }, debug)
                   : null,
+            /* 点击区域只覆盖头像：立绘下半身与四周不拦截指针，压住的按钮照样能点。 */
+            h('div', {
+              key: 'hit',
+              className: 'shp-hit',
+              onClick: settings.poke ? onPoke : undefined,
+              onMouseEnter: () => setHover(true),
+              onMouseLeave: () => setHover(false),
+              title: t('overlay_label'),
+            }),
           ),
         ),
       )
@@ -1425,6 +1496,7 @@ window.__ModuleLoader__.load({
       apply,
       animUrlFor,
       animUrlsFor,
+      fitPetSize,
       speechText,
       speechSub,
       toolLabel,

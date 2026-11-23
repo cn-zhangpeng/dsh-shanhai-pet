@@ -93,6 +93,35 @@ const rendered = typeof vnode.type === 'function' ? vnode.type(vnode.props) : vn
 assert.equal(rendered.type, 'div')
 assert.ok(rendered.children.length >= 2, '包含样式与浮层主体')
 
+/* 小屏自适应：设置值只是上限，按视口收缩；只有头像区可点，其余穿透 */
+assert.equal(typeof exported.fitPetSize, 'function', '导出 fitPetSize 供测试')
+const ratio = 344 / 520
+const desktop = exported.fitPetSize(250, ratio, { w: 1920, h: 1080 })
+assert.equal(desktop.height, 250, '桌面保持用户设置高度')
+assert.equal(desktop.width, Math.round(250 * ratio), '宽度按原图比例')
+const phone = exported.fitPetSize(250, ratio, { w: 390, h: 844 })
+assert.ok(phone.height < 250, '手机屏自动缩小')
+assert.ok(phone.height <= Math.round((390 * 0.3) / ratio), '不超过视口宽度的 30%')
+assert.ok(phone.height >= 96, '不缩到不可见')
+assert.equal(phone.width, Math.round(phone.height * ratio), '缩小后仍按比例')
+const landscape = exported.fitPetSize(250, ratio, { w: 844, h: 390 })
+assert.ok(landscape.height <= Math.round(390 * 0.38), '横屏按高度封顶')
+assert.equal(exported.fitPetSize(5000, ratio, { w: 1280, h: 800 }).height, Math.round(800 * 0.38), '超大设置也按视口收缩')
+assert.equal(exported.fitPetSize(96, ratio, { w: 0, h: 0 }).height, 96, '未知视口保留设置值')
+
+const css = rendered.children[0].props.dangerouslySetInnerHTML.__html
+assert.ok(css.includes('.shp-hit{'), '存在头像点击区样式')
+assert.ok(/\.shp-pet\{[^}]*pointer-events:none/.test(css), '立绘本体不拦截指针')
+assert.ok(/\.shp-hit\{[^}]*pointer-events:auto/.test(css), '只有点击区接收指针')
+const wrapVnode = rendered.children[1]
+const petVnode = wrapVnode.children.find((child) => child && child.props && child.props.className === 'shp-pet')
+assert.ok(petVnode, '渲染立绘节点')
+assert.equal(petVnode.props.style.height, desktop.height + 'px', '立绘高度取自适应结果')
+assert.equal(petVnode.props.style.width, desktop.width + 'px', '立绘宽度取自适应结果')
+const hitVnode = petVnode.children.find((child) => child && child.props && child.props.className === 'shp-hit')
+assert.ok(hitVnode, '立绘内带点击热区')
+assert.equal(typeof hitVnode.props.onClick, 'function', '热区承载点击互动')
+
 /* 设置页 */
 const settingsSection = registrations.find(([options]) => options.name === 'settings.section')
 assert.ok(settingsSection, 'settings.section 已注册')
