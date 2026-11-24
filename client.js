@@ -31,6 +31,11 @@ window.__ModuleLoader__.load({
     const GREET_CHECK_MS = 5000
     const GREET_INTERVAL = 30 * 60 * 1000
     const GREET_HOLD = 10 * 1000
+    // 待机小动作：闲置 18–60s 随机播一段 2s 左右的短轨道（素材里未被相位引用的生活帧）。
+    const IDLE_ACTS = ['actWave', 'actSmile', 'actTurn', 'actPhone', 'actWalk', 'actStand', 'actTalk']
+    const IDLE_ACT_MIN_MS = 18 * 1000
+    const IDLE_ACT_MAX_MS = 60 * 1000
+    const IDLE_ACT_HOLD_MS = 2200
 
     /* 诊断上报（模块工厂一加载就发一次，确认新代码是否真的进了页面）。 */
     function reportToHost(payload) {
@@ -74,6 +79,14 @@ window.__ModuleLoader__.load({
       settings_blink_hint: '待机时偶尔闭一下眼（原生动画播放，不闪）；关掉就一直是睁眼帧。',
       settings_float: '呼吸浮动',
       settings_float_hint: '待机时轻微上下起伏。',
+      settings_act: '待机小动作',
+      settings_act_hint: '闲下来时偶尔招手、看看手机、踱两步；干活时不打扰。',
+      menu_label: '灵宠菜单',
+      menu_reset: '回到原位',
+      menu_act: '动一下',
+      menu_bubble_on: '隐藏气泡',
+      menu_bubble_off: '显示气泡',
+      menu_hide: '先藏起来',
       settings_bubble: '状态气泡',
       settings_bubble_hint: '非待机时在头顶显示当前状态。',
       settings_narrate: '进度播报',
@@ -161,6 +174,14 @@ window.__ModuleLoader__.load({
       settings_blink_hint: 'She closes her eyes now and then. Plays as a native animation, no flicker.',
       settings_float: 'Breathing motion',
       settings_float_hint: 'A slow up-and-down drift while idle.',
+      settings_act: 'Idle actions',
+      settings_act_hint: 'Now and then she waves, checks her phone or paces for a moment; quiet while working.',
+      menu_label: 'Pet menu',
+      menu_reset: 'Back to start',
+      menu_act: 'Do something',
+      menu_bubble_on: 'Hide bubbles',
+      menu_bubble_off: 'Show bubbles',
+      menu_hide: 'Hide for now',
       settings_bubble: 'Status bubble',
       settings_bubble_hint: 'Show what she is up to above her while busy.',
       settings_narrate: 'Progress narration',
@@ -228,7 +249,22 @@ window.__ModuleLoader__.load({
       '.shp-pet{position:relative;display:block;pointer-events:none;cursor:pointer;transition:transform .25s ease;',
       'filter:drop-shadow(0 8px 14px rgba(0,0,0,.18))}',
       '.shp-hit{position:absolute;left:12%;top:2%;width:76%;height:42%;pointer-events:auto;',
-      'cursor:pointer;-webkit-tap-highlight-color:transparent}',
+      'cursor:grab;touch-action:none;-webkit-tap-highlight-color:transparent}',
+      '.shp-hit:active{cursor:grabbing}',
+      /* 拖动中：停掉过渡/浮动动画和 hover 抬升，跟手 */
+      '.shp-root.shp-dragging .shp-pet{transition:none;transform:none}',
+      '.shp-root.shp-dragging .shp-img{animation:none}',
+      /* 右键/长按菜单：浮在立绘上方（顶部不够时翻到下方） */
+      '.shp-menu{position:absolute;right:0;bottom:calc(100% + 8px);min-width:128px;padding:5px;display:flex;',
+      'flex-direction:column;gap:2px;background:#fffdf6;border:1.5px solid #5d5449;border-radius:10px;',
+      'box-shadow:0 8px 22px rgba(0,0,0,.18);pointer-events:auto;z-index:3;animation:shp-in .16s ease}',
+      '.shp-menu.shp-menu-down{bottom:auto;top:calc(100% + 8px)}',
+      '.shp-menu-b{appearance:none;border:0;background:transparent;text-align:left;padding:7px 10px;',
+      'border-radius:7px;font:inherit;font-size:12px;color:#4a4038;cursor:pointer;white-space:nowrap}',
+      '.shp-menu-b:hover{background:rgba(93,84,73,.12)}',
+      '.shp-menu-b:focus-visible{outline:2px solid #e0a63f;outline-offset:1px}',
+      '@media (prefers-reduced-motion: reduce){.shp-img{animation:none!important}',
+      '.shp-root .shp-pet:hover{transform:none}.shp-bubble{animation:none}.shp-menu{animation:none}}',
       '.shp-pet:hover{transform:translateY(-2px)}',
       '.shp-root.shp-static .shp-hit{cursor:default}',
       '.shp-root.shp-static .shp-pet:hover{transform:none}',
@@ -304,6 +340,7 @@ window.__ModuleLoader__.load({
       bottom: 14,
       blink: true,
       float: true,
+      idleAct: true,
       bubble: true,
       poke: true,
       narrate: true,
@@ -334,6 +371,7 @@ window.__ModuleLoader__.load({
         bottom: clampValue(src.bottom, seed.bottom, 'bottom'),
         blink: bool('blink'),
         float: bool('float'),
+        idleAct: bool('idleAct'),
         bubble: bool('bubble'),
         poke: bool('poke'),
         narrate: bool('narrate'),
@@ -491,6 +529,21 @@ window.__ModuleLoader__.load({
       return { height: fit, width: Math.round(fit * ratio) }
     }
 
+    /**
+     * 拖拽落点：以「距右/距底」为坐标系，按指针位移反向移动，并夹在视口内。
+     * 视口未知时退回设置的 0–4000 范围（主要给测试与预渲染）。
+     */
+    function dragPosition(startRight, startBottom, dx, dy, size, viewport) {
+      const vw = viewport && Number.isFinite(viewport.w) && viewport.w > 0 ? viewport.w : 0
+      const vh = viewport && Number.isFinite(viewport.h) && viewport.h > 0 ? viewport.h : 0
+      const petW = size && Number.isFinite(size.width) ? size.width : 0
+      const petH = size && Number.isFinite(size.height) ? size.height : 0
+      const maxRight = vw > 0 ? Math.max(0, vw - petW) : 4000
+      const maxBottom = vh > 0 ? Math.max(0, vh - petH) : 4000
+      const clamp = (value, max) => Math.min(max, Math.max(0, Math.round(value)))
+      return { right: clamp(startRight - dx, maxRight), bottom: clamp(startBottom - dy, maxBottom) }
+    }
+
     function useViewport() {
       const [value, setValue] = React.useState(readViewport())
       React.useEffect(() => {
@@ -519,6 +572,87 @@ window.__ModuleLoader__.load({
         }
       }, [])
       return value
+    }
+
+    /** 系统「减少动态效果」偏好：命中后停掉浮动/倾斜，待机小动作也不播。 */
+    function useReducedMotion() {
+      const [reduced, setReduced] = React.useState(readReducedMotion())
+      React.useEffect(() => {
+        if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined
+        let mq
+        try {
+          mq = window.matchMedia('(prefers-reduced-motion: reduce)')
+        } catch (err) {
+          return undefined
+        }
+        const update = () => setReduced(Boolean(mq.matches))
+        if (typeof mq.addEventListener === 'function') mq.addEventListener('change', update)
+        else if (typeof mq.addListener === 'function') mq.addListener(update)
+        return () => {
+          if (typeof mq.removeEventListener === 'function') mq.removeEventListener('change', update)
+          else if (typeof mq.removeListener === 'function') mq.removeListener(update)
+        }
+      }, [])
+      return reduced
+    }
+
+    function readReducedMotion() {
+      if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false
+      try {
+        return window.matchMedia('(prefers-reduced-motion: reduce)').matches === true
+      } catch (err) {
+        return false
+      }
+    }
+
+    /** 从帧清单里挑一条可播的待机小动作轨道（缺轨道的皮肤自动跳过）。 */
+    function pickIdleAct(manifest) {
+      const tracks = manifest && manifest.frames2d ? manifest.frames2d.tracks : null
+      if (!tracks) return null
+      const pool = IDLE_ACTS.filter((name) => tracks[name])
+      if (pool.length === 0) return null
+      return pool[Math.floor(Math.random() * pool.length)]
+    }
+
+    /**
+     * 待机小动作：空闲 18–60 秒随机播一段 2 秒左右的短轨道，然后回到 idle。
+     * 只在 idle 相位、开关打开、未开启「减少动态效果」时生效；干活时自动停。
+     */
+    function useIdleAct(manifest, phase, enabled, reduced) {
+      const [act, setAct] = React.useState(null)
+      const holdRef = React.useRef(0)
+      const playRef = React.useRef(() => {})
+      playRef.current = () => {
+        const track = pickIdleAct(manifest)
+        if (!track) return
+        setAct(track)
+        window.clearTimeout(holdRef.current)
+        holdRef.current = window.setTimeout(() => setAct(null), IDLE_ACT_HOLD_MS)
+      }
+      React.useEffect(() => {
+        window.clearTimeout(holdRef.current)
+        if (!enabled || reduced || !manifest) {
+          setAct(null)
+          return undefined
+        }
+        let timer = 0
+        let stopped = false
+        const schedule = () => {
+          timer = window.setTimeout(() => {
+            if (stopped) return
+            if (phase === 'idle') playRef.current()
+            schedule()
+          }, IDLE_ACT_MIN_MS + Math.random() * (IDLE_ACT_MAX_MS - IDLE_ACT_MIN_MS))
+        }
+        schedule()
+        return () => {
+          stopped = true
+          window.clearTimeout(timer)
+          window.clearTimeout(holdRef.current)
+          setAct(null)
+        }
+      }, [enabled, reduced, manifest, phase])
+      return [act, playRef.current]
     }
 
     function fetchSettings() {
@@ -943,6 +1077,15 @@ window.__ModuleLoader__.load({
                 onChange: (value) => commit({ float: value }),
               }),
             ),
+            h(
+              Row,
+              { label: t('settings_act'), hint: t('settings_act_hint') },
+              h(Toggle, {
+                checked: settings.idleAct,
+                label: t('settings_act'),
+                onChange: (value) => commit({ idleAct: value }),
+              }),
+            ),
           ),
         ),
         h(
@@ -1078,6 +1221,9 @@ window.__ModuleLoader__.load({
       const t = props.t
       const settings = useSettings()
       const viewport = useViewport()
+      const reduced = useReducedMotion()
+      const [drag, setDrag] = React.useState(null)
+      const [menuOpen, setMenuOpen] = React.useState(false)
       const [state, setState] = React.useState(null)
       const [manifest, setManifest] = React.useState(null)
       const [poke, setPoke] = React.useState(null)
@@ -1095,6 +1241,9 @@ window.__ModuleLoader__.load({
       /* 皮肤热切换：轮询发现 activeSkin 变了就重拉帧清单。 */
       const skinRef = React.useRef(undefined)
       const reloadManifestRef = React.useRef(null)
+      /* 拖拽/长按状态放在 ref 里：pointermove 高频，避免每帧都触发 React 更新以外的开销。 */
+      const dragRef = React.useRef({ active: false, moved: false, longPressed: false, startX: 0, startY: 0, startRight: 0, startBottom: 0, right: 0, bottom: 0, pointerId: 0, pressTimer: 0 })
+      const suppressClickRef = React.useRef(false)
 
       /* 诊断上报：宿主的资源路由只收 GET，所以用 query 上报。 */
       const report = React.useRef((payload) => reportToHost(payload)).current
@@ -1245,6 +1394,8 @@ window.__ModuleLoader__.load({
 
       const phase = state && state.phase ? String(state.phase) : 'idle'
       const detail = state && state.detail ? state.detail : null
+      /* 待机小动作：idle 时随机插一段生活动作，干活/戳一戳/里程碑时让位。 */
+      const [idleAct, playIdleAct] = useIdleAct(manifest, phase, settings.idleAct, reduced)
       /* 闲时问候与里程碑：先于轨道选择算好，里程碑当天第一次问候用点灯轨道庆祝。 */
       const greetLive = Boolean(
         settings.greet &&
@@ -1260,7 +1411,9 @@ window.__ModuleLoader__.load({
           ? pokeTrack
           : milestoneGreetLive && manifest && manifest.frames2d && manifest.frames2d.tracks.done
             ? 'done'
-            : trackName
+            : idleAct && phase === 'idle' && manifest && manifest.frames2d && manifest.frames2d.tracks[idleAct]
+              ? idleAct
+              : trackName
       /* 播放失败过的动画地址记在这里，避免每次重渲染都去撞同一个 404。 */
       const animUrl =
         animUrlsFor(manifest, shownTrack, settings.blink).filter((url) => !brokenAnims.has(url))[0] || null
@@ -1318,6 +1471,25 @@ window.__ModuleLoader__.load({
         })
       }, [manifest, frame, phase, report])
 
+      /* 菜单打开时点别处或按 Esc 关闭。 */
+      React.useEffect(() => {
+        if (!menuOpen) return undefined
+        const onDown = (event) => {
+          const target = event.target
+          if (target && target.closest && (target.closest('.shp-menu') || target.closest('.shp-hit'))) return
+          setMenuOpen(false)
+        }
+        const onKey = (event) => {
+          if (event.key === 'Escape') setMenuOpen(false)
+        }
+        window.addEventListener('pointerdown', onDown, true)
+        window.addEventListener('keydown', onKey)
+        return () => {
+          window.removeEventListener('pointerdown', onDown, true)
+          window.removeEventListener('keydown', onKey)
+        }
+      }, [menuOpen])
+
       const pokeLines = [t('poke1'), t('poke2'), t('poke3'), t('poke4')]
       const onPoke = () => {
         const idx = Math.floor(Math.random() * pokeLines.length)
@@ -1374,23 +1546,156 @@ window.__ModuleLoader__.load({
       /* 用户设置的高度只作上限：小屏按视口收缩，避免立绘占掉半个手机屏。 */
       const petSize = fitPetSize(settings.height, aspect, viewport)
 
+      /* ---------- 拖动 / 右键菜单 ---------- */
+
+      const pos = drag || {
+        right: viewport && viewport.w > 0 ? Math.min(settings.right, Math.max(0, viewport.w - petSize.width)) : settings.right,
+        bottom: viewport && viewport.h > 0 ? Math.min(settings.bottom, Math.max(0, viewport.h - petSize.height)) : settings.bottom,
+      }
+
+      const endDrag = (event, commit) => {
+        const st = dragRef.current
+        st.active = false
+        window.clearTimeout(st.pressTimer)
+        const moved = st.moved
+        st.moved = false
+        if (moved) suppressClickRef.current = true
+        if (commit && moved) saveSettings({ right: st.right, bottom: st.bottom })
+        setDrag(null)
+        const target = event && event.currentTarget
+        if (target && target.releasePointerCapture) {
+          try {
+            target.releasePointerCapture(st.pointerId)
+          } catch (err) {
+            /* 指针已释放 */
+          }
+        }
+      }
+
+      const onHitPointerDown = (event) => {
+        const st = dragRef.current
+        if (event.button !== undefined && event.button !== 0) return
+        st.active = true
+        st.moved = false
+        st.longPressed = false
+        st.startX = event.clientX
+        st.startY = event.clientY
+        st.startRight = pos.right
+        st.startBottom = pos.bottom
+        st.right = pos.right
+        st.bottom = pos.bottom
+        st.pointerId = event.pointerId
+        suppressClickRef.current = false
+        setMenuOpen(false)
+        const target = event.currentTarget
+        if (target && target.setPointerCapture) {
+          try {
+            target.setPointerCapture(event.pointerId)
+          } catch (err) {
+            /* 不支持捕获时退化 */
+          }
+        }
+        /* 触屏长按 520ms 打开菜单（鼠标走 contextmenu）。 */
+        window.clearTimeout(st.pressTimer)
+        st.pressTimer = window.setTimeout(() => {
+          if (!st.active || st.moved) return
+          st.longPressed = true
+          suppressClickRef.current = true
+          setMenuOpen(true)
+        }, 520)
+      }
+
+      const onHitPointerMove = (event) => {
+        const st = dragRef.current
+        if (!st.active) return
+        const dx = event.clientX - st.startX
+        const dy = event.clientY - st.startY
+        if (!st.moved && Math.hypot(dx, dy) < 5) return
+        if (st.longPressed) {
+          st.longPressed = false
+          setMenuOpen(false)
+        }
+        st.moved = true
+        window.clearTimeout(st.pressTimer)
+        const next = dragPosition(st.startRight, st.startBottom, dx, dy, petSize, viewport && viewport.w ? viewport : readViewport())
+        st.right = next.right
+        st.bottom = next.bottom
+        setDrag(next)
+      }
+
+      const onHitPointerUp = (event) => endDrag(event, true)
+      const onHitPointerCancel = (event) => endDrag(event, false)
+
+      const onHitClick = (event) => {
+        if (suppressClickRef.current) {
+          suppressClickRef.current = false
+          return
+        }
+        if (event && event.detail > 1) return
+        if (settings.poke) onPoke()
+      }
+
+      const onHitContextMenu = (event) => {
+        if (event && event.preventDefault) event.preventDefault()
+        suppressClickRef.current = true
+        setMenuOpen(true)
+      }
+
+      const resetPosition = () => {
+        setMenuOpen(false)
+        saveSettings({ right: DEFAULT_SETTINGS.right, bottom: DEFAULT_SETTINGS.bottom })
+      }
+      const actNow = () => {
+        setMenuOpen(false)
+        playIdleAct()
+      }
+      const toggleBubble = () => {
+        setMenuOpen(false)
+        saveSettings({ bubble: !settings.bubble })
+      }
+      const hidePet = () => {
+        setMenuOpen(false)
+        saveSettings({ visible: false })
+      }
+
       if (!settings.visible) return null
 
       return h(
         'div',
         {
           className:
-            'shp-root shp-' + phase + (settings.float ? ' shp-float' : '') + (settings.poke ? '' : ' shp-static'),
+            'shp-root shp-' + phase + (settings.float && !reduced ? ' shp-float' : '') + (settings.poke ? '' : ' shp-static') + (drag ? ' shp-dragging' : ''),
           style: {
-            right: 'calc(' + settings.right + 'px + env(safe-area-inset-right, 0px))',
-            bottom: 'calc(' + settings.bottom + 'px + env(safe-area-inset-bottom, 0px))',
+            right: 'calc(' + pos.right + 'px + env(safe-area-inset-right, 0px))',
+            bottom: 'calc(' + pos.bottom + 'px + env(safe-area-inset-bottom, 0px))',
           },
         },
         h('style', { key: 'css', dangerouslySetInnerHTML: { __html: CSS } }),
         h(
           'div',
           { className: 'shp-wrap' },
-          showBubble
+          menuOpen
+            ? h(
+                'div',
+                {
+                  key: 'menu',
+                  className:
+                    'shp-menu' +
+                    (viewport && viewport.h > 0 && viewport.h - pos.bottom - petSize.height < 170 ? ' shp-menu-down' : ''),
+                  role: 'menu',
+                  'aria-label': t('menu_label'),
+                },
+                h('button', { key: 'm1', type: 'button', className: 'shp-menu-b', role: 'menuitem', onClick: resetPosition }, t('menu_reset')),
+                h('button', { key: 'm2', type: 'button', className: 'shp-menu-b', role: 'menuitem', onClick: actNow }, t('menu_act')),
+                h(
+                  'button',
+                  { key: 'm3', type: 'button', className: 'shp-menu-b', role: 'menuitem', onClick: toggleBubble },
+                  settings.bubble ? t('menu_bubble_on') : t('menu_bubble_off'),
+                ),
+                h('button', { key: 'm4', type: 'button', className: 'shp-menu-b', role: 'menuitem', onClick: hidePet }, t('menu_hide')),
+              )
+            : null,
+          showBubble && !menuOpen
             ? h(
                 'div',
                 { key: 'bubble', className: 'shp-bubble' },
@@ -1435,11 +1740,17 @@ window.__ModuleLoader__.load({
                 : debug
                   ? h('div', { className: 'shp-fallback' }, debug)
                   : null,
-            /* 点击区域只覆盖头像：立绘下半身与四周不拦截指针，压住的按钮照样能点。 */
+            /* 点击区域只覆盖头像：立绘下半身与四周不拦截指针，压住的按钮照样能点。
+               拖动/长按/右键也都在这一小块上，不会影响立绘之外的界面。 */
             h('div', {
               key: 'hit',
               className: 'shp-hit',
-              onClick: settings.poke ? onPoke : undefined,
+              onClick: onHitClick,
+              onPointerDown: onHitPointerDown,
+              onPointerMove: onHitPointerMove,
+              onPointerUp: onHitPointerUp,
+              onPointerCancel: onHitPointerCancel,
+              onContextMenu: onHitContextMenu,
               onMouseEnter: () => setHover(true),
               onMouseLeave: () => setHover(false),
               title: t('overlay_label'),
@@ -1497,6 +1808,9 @@ window.__ModuleLoader__.load({
       animUrlFor,
       animUrlsFor,
       fitPetSize,
+      dragPosition,
+      pickIdleAct,
+      IDLE_ACTS,
       speechText,
       speechSub,
       toolLabel,

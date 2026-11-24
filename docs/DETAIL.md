@@ -125,6 +125,7 @@ Host 在 `GET /api/shanhai-pet/state` 的每次请求上推进陪伴计时：客
 | `bottom` | 14 | 0–4000 | 距视口底边（px） |
 | `blink` | true | bool | 待机眨眼（时长烘在动画里；关掉停在睁眼帧） |
 | `float` | true | bool | 呼吸浮动动画 |
+| `idleAct` | true | bool | 待机小动作（18–60 秒随机播招手/看手机/踱步等短轨道） |
 | `bubble` | true | bool | 非待机时头顶显示相位气泡 |
 | `poke` | true | bool | 点击换姿势说台词 |
 | `narrate` | true | bool | 任务进度播报（清单步骤、收工、碰壁台词） |
@@ -206,6 +207,16 @@ Host 在 `GET /api/shanhai-pet/state` 的每次请求上推进陪伴计时：客
   `.shp-hit`（left 12%、top 2%、宽 76%、高 42%）接收点击与悬停。立绘压住输入框、
   发送键或工具条时，没被 `.shp-hit` 覆盖的位置照常点得到底下的按钮。
 - 安全区：浮层定位用 `calc(...px + env(safe-area-inset-*))`，刘海屏/手势条下不会贴边。
+- **拖动**：在头像热区按下（Pointer Events + `setPointerCapture`）后移动超过 5px 进入拖动，
+  位移换算成新的「距右/距底」并用视口夹取（`dragPosition`），松手才 POST 保存；
+  拖动中停掉过渡、浮动与 hover 抬升。窗口缩放后渲染时也会把位置收进视口。
+- **右键/长按菜单**：`contextmenu` 或触屏长按 520ms 打开，菜单在立绘上方（顶部不够时翻到
+  下方，`shp-menu-down`）：回到原位 / 动一下 / 气泡开关 / 先藏起来；点别处或 Esc 关闭。
+- **待机小动作**：`useIdleAct` 在 idle 相位每 18–60 秒从 `IDLE_ACTS` 里挑一条
+  `pet.json` 实际存在的短轨道播 ~2.2 秒；`idleAct` 关闭、`prefers-reduced-motion`
+  命中或离开 idle 时自动停。
+- **减少动态效果**：`useReducedMotion` 监听 `(prefers-reduced-motion: reduce)`，
+  命中后不挂 `shp-float`、不播小动作，CSS 同时关掉浮动/倾斜/气泡入场动画。
 
 ## 设置页
 
@@ -222,6 +233,6 @@ Host 在 `GET /api/shanhai-pet/state` 的每次请求上推进陪伴计时：客
 
 ## 已知边界
 
-- 位置只能从设置页的「距右边 / 距底部」调，暂不支持拖动。
+- 位置支持拖动（松手持久化），也可在设置页用「距右边 / 距底部」精确调。
 - 设置是全局单份（`$DSH_HOME/shanhai-pet/settings.json`），不按会话区分。
 - 只跟随"最近活跃会话"，多会话并行时显示最后动过的那个。

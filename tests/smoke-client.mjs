@@ -16,7 +16,15 @@ const React = {
   useEffect: () => {},
   useRef: (value) => ({ current: value }),
 }
-const window = { __ModuleLoader__: { load: (mod) => { loaded = mod } } }
+const window = {
+  __ModuleLoader__: { load: (mod) => { loaded = mod } },
+  setTimeout,
+  clearTimeout,
+  setInterval,
+  clearInterval,
+  addEventListener() {},
+  removeEventListener() {},
+}
 const sandbox = {
   window,
   document: { visibilityState: 'visible', addEventListener() {} },
@@ -121,6 +129,57 @@ assert.equal(petVnode.props.style.width, desktop.width + 'px', '立绘宽度取�
 const hitVnode = petVnode.children.find((child) => child && child.props && child.props.className === 'shp-hit')
 assert.ok(hitVnode, '立绘内带点击热区')
 assert.equal(typeof hitVnode.props.onClick, 'function', '热区承载点击互动')
+assert.equal(typeof hitVnode.props.onPointerDown, 'function', '热区支持拖动起手')
+assert.equal(typeof hitVnode.props.onPointerMove, 'function', '热区支持拖动移动')
+assert.equal(typeof hitVnode.props.onPointerUp, 'function', '热区支持拖动收尾')
+assert.equal(typeof hitVnode.props.onContextMenu, 'function', '热区支持右键菜单')
+
+/* 拖动落点：按「距右/距底」反向移动并夹在视口内 */
+assert.equal(typeof exported.dragPosition, 'function', '导出 dragPosition 供测试')
+const size = { width: 117, height: 177 }
+const moved = exported.dragPosition(24, 14, -100, -50, size, { w: 390, h: 844 })
+assert.deepEqual({ right: moved.right, bottom: moved.bottom }, { right: 124, bottom: 64 }, '向左上拖动增加右/底距')
+const clamped = exported.dragPosition(10, 10, 500, 500, size, { w: 390, h: 844 })
+assert.equal(clamped.right, 0, '拖出左边界夹到 0')
+assert.equal(clamped.bottom, 0, '拖出下边界夹到 0')
+const bounded = exported.dragPosition(10, 10, -900, -900, size, { w: 390, h: 844 })
+assert.equal(bounded.right, 390 - 117, '拖出右边界夹到视口减立绘宽')
+assert.equal(bounded.bottom, 844 - 177, '拖出上边界夹到视口减立绘高')
+const unknownVp = exported.dragPosition(24, 14, -10, -10, size, { w: 0, h: 0 })
+assert.deepEqual({ right: unknownVp.right, bottom: unknownVp.bottom }, { right: 34, bottom: 24 }, '视口未知时只做 0–4000 夹取')
+
+/* 待机小动作：只挑帧清单里真实存在的轨道 */
+assert.equal(exported.pickIdleAct(null), null, '没有帧清单不播')
+assert.equal(exported.pickIdleAct({ frames2d: { tracks: { idle: {} } } }), null, '没有小动作轨道不播')
+const actPool = new Set(exported.IDLE_ACTS)
+for (let i = 0; i < 20; i++) {
+  const act = exported.pickIdleAct({ frames2d: { tracks: { actWave: {}, actWalk: {} } } })
+  assert.ok(act === 'actWave' || act === 'actWalk', '只从可用轨道里挑')
+  assert.ok(actPool.has(act), '挑出的轨道在 IDLE_ACTS 白名单内')
+}
+
+/* 菜单 / 拖动 / 降低动效的样式都在 */
+assert.ok(css.includes('.shp-menu{'), '存在右键菜单样式')
+assert.ok(/\.shp-hit\{[^}]*touch-action:none/.test(css), '拖动时不触发页面滚动')
+assert.ok(css.includes('.shp-dragging'), '拖动中样式存在')
+assert.ok(css.includes('prefers-reduced-motion'), '尊重系统减少动态效果')
+
+/* 拖动收尾：位移超过阈值后把新位置写回设置（POST /settings） */
+const calls = []
+sandbox.fetch = async (url, init) => {
+  calls.push({ url: String(url), body: init && init.body ? String(init.body) : '' })
+  return { ok: true, json: async () => ({ settings: {} }) }
+}
+const captureTarget = { setPointerCapture() {}, releasePointerCapture() {} }
+hitVnode.props.onPointerDown({ button: 0, clientX: 200, clientY: 200, pointerId: 7, currentTarget: captureTarget })
+hitVnode.props.onPointerMove({ clientX: 180, clientY: 170, pointerId: 7 })
+hitVnode.props.onPointerUp({ clientX: 180, clientY: 170, pointerId: 7, currentTarget: captureTarget })
+await new Promise((resolve) => setTimeout(resolve, 0))
+const saved = calls.filter((call) => call.url.includes('/settings')).pop()
+assert.ok(saved, '拖动结束后保存位置')
+const patch = JSON.parse(saved.body)
+assert.equal(patch.right, 44, '右距随拖动增加 20px')
+assert.equal(patch.bottom, 44, '底距随拖动增加 30px')
 
 /* 设置页 */
 const settingsSection = registrations.find(([options]) => options.name === 'settings.section')
@@ -149,6 +208,11 @@ const groups = page.children.filter((child) => child && child.props && child.pro
 assert.equal(groups.length, 4, '外观/动作/互动/素材四组')
 const lookRows = groups[0].children[1].children
 assert.equal(lookRows[0].props.label, t('settings_company'), '外观组首行是今日陪伴')
+const motionRows = groups[1].children[1].children
+const actRow = motionRows.find((row) => row && row.props && row.props.label === t('settings_act'))
+assert.ok(actRow, '动作组有待机小动作开关')
+const actToggle = actRow.children.find((child) => child && child.type && child.type.name === 'Toggle')
+assert.ok(actToggle && actToggle.props.checked === true, '待机小动作默认开')
 const metaRows = groups[2].children[1].children
 const narrateRow = metaRows.find((row) => row && row.props && row.props.label === t('settings_narrate'))
 assert.ok(narrateRow, '互动组有进度播报开关')

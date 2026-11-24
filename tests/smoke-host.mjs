@@ -41,6 +41,9 @@ assert.equal(normalizeSettings({ narrate: false }).narrate, false, '播报开关
 assert.equal(normalizeSettings({ narrate: 'yes' }).narrate, true, '坏类型回落默认开')
 assert.equal(DEFAULT_SETTINGS.greet, true, '闲时问候默认开')
 assert.equal(normalizeSettings({ greet: false }).greet, false, '问候开关可关')
+assert.equal(DEFAULT_SETTINGS.idleAct, true, '待机小动作默认开')
+assert.equal(normalizeSettings({ idleAct: false }).idleAct, false, '待机小动作可关')
+assert.equal(normalizeSettings({ idleAct: 'yes' }).idleAct, true, '坏类型回落默认开')
 assert.equal(normalizeSettings({ height: 320 }, { ...DEFAULT_SETTINGS, visible: false }).height, 320)
 
 /* ---- DSH home 解析 ---- */

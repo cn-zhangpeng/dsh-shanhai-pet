@@ -118,6 +118,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   bottom: 14, // 距视口底部 px
   blink: true, // 待机时眨眼（时长烘在 anim/idle.webp 里）
   float: true, // 待机时呼吸浮动
+  idleAct: true, // 待机时偶尔播一段小动作（招手/看手机/踱步…）
   bubble: true, // 非 idle 相位的气泡
   poke: true, // 点击互动
   narrate: true, // 任务进度播报（todo 清单 + 收工/碰壁台词）
@@ -157,6 +158,7 @@ export function normalizeSettings(input, base = DEFAULT_SETTINGS) {
     bottom: num('bottom'),
     blink: bool('blink'),
     float: bool('float'),
+    idleAct: bool('idleAct'),
     bubble: bool('bubble'),
     poke: bool('poke'),
     narrate: bool('narrate'),
