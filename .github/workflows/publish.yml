@@ -1,0 +1,51 @@
+name: Publish to npm
+
+# 手动触发：确认 CI 通过、版本号已 bump 之后再发。
+# 需要仓库 Secret：NPM_TOKEN（npm Automation token）。
+on:
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: '只执行 npm pack / 校验，不真正发布'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Smoke tests
+        run: |
+          node tests/smoke-host.mjs
+          node tests/smoke-client.mjs
+
+      - name: Version consistency
+        run: |
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          echo "package.json version: $PKG_VERSION"
+          if [ "${{ github.ref_type }}" = "tag" ] && [ "${{ github.ref_name }}" != "v$PKG_VERSION" ]; then
+            echo "tag ${{ github.ref_name }} does not match package version $PKG_VERSION" >&2
+            exit 1
+          fi
+
+      - name: Publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ "${{ inputs.dry-run }}" = "true" ]; then
+            npm publish --provenance --access public --dry-run
+          else
+            npm publish --provenance --access public
+          fi

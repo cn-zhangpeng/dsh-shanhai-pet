@@ -1,5 +1,7 @@
 # dsh-shanhai-pet
 
+[![CI](https://github.com/cn-zhangpeng/dsh-shanhai-pet/actions/workflows/ci.yml/badge.svg)](https://github.com/cn-zhangpeng/dsh-shanhai-pet/actions/workflows/ci.yml)
+
 DeepSeek Harness 桌宠插件（山海紫穹系列）：一只住在会话旁的桌面小灵宠「冉冉」。
 
 她不读你的对话，只读会话的**结构化状态**：这一轮在推理、在改代码、在跑命令，

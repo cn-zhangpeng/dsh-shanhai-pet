@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Syntax check
+        run: |
+          node --check index.js
+          node --check client.js
+
+      - name: Host smoke test
+        run: node tests/smoke-host.mjs
+
+      - name: Client smoke test
+        run: node tests/smoke-client.mjs
+
+      - name: Settings page preview
+        run: node tests/preview-settings.mjs
+
+      # 截图回归的基线：把设置页渲染出来存档，人工看 diff 或后续接像素比对。
+      - name: Screenshot settings page
+        run: |
+          CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)"
+          if [ -z "$CHROME" ]; then
+            echo "no chromium on this runner; skip screenshot"
+            exit 0
+          fi
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --hide-scrollbars \
+            --virtual-time-budget=2000 --window-size=900,1500 \
+            --screenshot="$PWD/tests/out/settings-preview.png" \
+            "file://$PWD/tests/out/settings-preview.html"
+          test -s tests/out/settings-preview.png
+
+      - name: Check package contents
+        run: npm pack --dry-run
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: settings-preview
+          path: |
+            tests/out/settings-preview.html
+            tests/out/settings-preview.png
+          if-no-files-found: ignore
+
+# Gitee 镜像由独立的 mirror.yml 负责（push main 时触发），这里不重复调用。
