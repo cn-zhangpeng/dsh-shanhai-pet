@@ -53,12 +53,15 @@
 
 ## 工程
 
-- [ ] **npm 占名**：`dsh-shanhai-pet` 在 npm registry 仍是 404（未发布）；
-      GitHub 侧 tag 已发到 `v1.0.1`，可考虑 npm 发 1.0.1 占名 + GitHub Release 同步。
+- [ ] **npm 占名**：`dsh-shanhai-pet` 在 npm registry 仍是 404（未发布）；发版流程已就绪
+      （`.github/workflows/publish.yml` 手动触发，需要仓库 Secret `NPM_TOKEN`），
+      本地 `npm login` 后也可直接 `npm publish --access public --provenance`。
+      发布前可先清理 26 张未引用帧，把包体从 6.4MB 降到 ~2.8MB。
 - [x] **设置页预览**：`tests/preview-settings.mjs` 把设置页渲染成静态 HTML
       （`tests/out/settings-preview.html`），改样式后先截图看排版（2026-11-19）。
-- [ ] **CI**：`.github/workflows/` 目前只有 `mirror.yml`（Gitee 镜像），
-      还没有跑 `node tests/smoke-host.mjs` + `node tests/smoke-client.mjs` 的测试 workflow。
+- [x] **CI**：`.github/workflows/ci.yml` 在 push / PR 上跑语法检查、host/client 烟测、
+      设置页预览与截图存档、`npm pack --dry-run`；首次 Linux 跑挂掉的盘符断言已修
+      （2026-11-25，run 3 通过）。
 - [ ] **展示**：README 仍无截图/GIF（右上角浮层 + 一个动作循环），上架页缺少直观展示。
 - [ ] **素材原始件**：`tests/new-frames/` 里的豆包原图与去背中间件要不要入库，
       目前 `.gitignore` 忽略了 `inbox/` 与 `selected/`，只留 `preview/`。
