@@ -1,6 +1,6 @@
 {
   "name": "dsh-shanhai-pet",
-  "version": "1.3.1",
+  "version": "1.3.2",
   "description": "任务状态驱动的 DSH 桌宠：跟着会话相位换姿势、用台词播报任务进度，不读对话内容。",
   "type": "module",
   "exports": {

@@ -295,8 +295,10 @@ window.__ModuleLoader__.load({
       /* 打盹：半透明缩小、停小动作和气泡，点一下叫醒 */
       '.shp-root.shp-dozing .shp-pet{opacity:.45;transform:scale(.86);filter:none}',
       '.shp-root.shp-dozing .shp-img{animation:none}',
-      '.shp-zz{position:absolute;right:6px;bottom:calc(100% + 2px);font-size:12px;letter-spacing:2px;',
-      'color:#8a7f74;pointer-events:none;animation:shp-float 3.2s ease-in-out infinite}',
+      '.shp-zz{position:absolute;left:0;right:0;bottom:calc(100% - 8px);display:flex;justify-content:center;',
+      'pointer-events:none}',
+      '.shp-zz span{font-size:12px;letter-spacing:2px;color:#8a7f74;',
+      'animation:shp-float 3.2s ease-in-out infinite}',
       /* 真正隐藏后留一个边缘小按钮，点它召唤回来 */
       '.shp-summon{position:fixed;right:0;bottom:14px;padding:6px 7px;border:1.5px solid #5d5449;border-right:0;',
       'border-radius:10px 0 0 10px;background:#fffdf6;color:#4a4038;font:inherit;font-size:11px;cursor:pointer;',
@@ -304,7 +306,7 @@ window.__ModuleLoader__.load({
       '.shp-summon:hover{background:#f7f1e6}',
       '@media (prefers-reduced-motion: reduce){.shp-img{animation:none!important}',
       '.shp-root .shp-pet:hover{transform:none}.shp-bubble{animation:none}.shp-card{animation:none}',
-      '.shp-zz{animation:none}}',
+      '.shp-zz span{animation:none}}',
       '.shp-pet:hover{transform:translateY(-2px)}',
       '.shp-root.shp-static .shp-hit{cursor:default}',
       '.shp-root.shp-static .shp-pet:hover{transform:none}',
@@ -1925,7 +1927,7 @@ window.__ModuleLoader__.load({
                 bubbleSub ? h('div', { className: 'shp-bubble-s' }, bubbleSub) : null,
               )
             : null,
-          dozing ? h('div', { key: 'zz', className: 'shp-zz', 'aria-hidden': true }, 'z z') : null,
+          dozing ? h('div', { key: 'zz', className: 'shp-zz', 'aria-hidden': true }, h('span', null, 'z z')) : null,
           h(
             'div',
             {
