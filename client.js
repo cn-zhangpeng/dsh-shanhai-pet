@@ -36,6 +36,12 @@ window.__ModuleLoader__.load({
     const IDLE_ACT_MIN_MS = 18 * 1000
     const IDLE_ACT_MAX_MS = 60 * 1000
     const IDLE_ACT_HOLD_MS = 2200
+    // 真正在干活、需要把灵宠叫醒的相位（done / failed / waiting / idle 不算）。
+    const ACTIVE_PHASES = new Set(['listening', 'thinking', 'tool', 'review'])
+
+    function isActivePhase(phase) {
+      return ACTIVE_PHASES.has(String(phase || ''))
+    }
 
     /* 诊断上报（模块工厂一加载就发一次，确认新代码是否真的进了页面）。 */
     function reportToHost(payload) {
@@ -289,13 +295,16 @@ window.__ModuleLoader__.load({
       /* 打盹：半透明缩小、停小动作和气泡，点一下叫醒 */
       '.shp-root.shp-dozing .shp-pet{opacity:.45;transform:scale(.86);filter:none}',
       '.shp-root.shp-dozing .shp-img{animation:none}',
+      '.shp-zz{position:absolute;right:6px;bottom:calc(100% + 2px);font-size:12px;letter-spacing:2px;',
+      'color:#8a7f74;pointer-events:none;animation:shp-float 3.2s ease-in-out infinite}',
       /* 真正隐藏后留一个边缘小按钮，点它召唤回来 */
       '.shp-summon{position:fixed;right:0;bottom:14px;padding:6px 7px;border:1.5px solid #5d5449;border-right:0;',
       'border-radius:10px 0 0 10px;background:#fffdf6;color:#4a4038;font:inherit;font-size:11px;cursor:pointer;',
       'box-shadow:0 6px 16px rgba(0,0,0,.14);pointer-events:auto;z-index:2147483000}',
       '.shp-summon:hover{background:#f7f1e6}',
       '@media (prefers-reduced-motion: reduce){.shp-img{animation:none!important}',
-      '.shp-root .shp-pet:hover{transform:none}.shp-bubble{animation:none}.shp-card{animation:none}}',
+      '.shp-root .shp-pet:hover{transform:none}.shp-bubble{animation:none}.shp-card{animation:none}',
+      '.shp-zz{animation:none}}',
       '.shp-pet:hover{transform:translateY(-2px)}',
       '.shp-root.shp-static .shp-hit{cursor:default}',
       '.shp-root.shp-static .shp-pet:hover{transform:none}',
@@ -1632,9 +1641,9 @@ window.__ModuleLoader__.load({
         }
       }, [cardOpen])
 
-      /* 打盹只在 idle 时成立：一旦有活儿自动醒。 */
+      /* 打盹只在真正开工时自动醒：done / failed / waiting 都还让她睡。 */
       React.useEffect(() => {
-        if (dozing && phase !== 'idle') setDozing(false)
+        if (dozing && isActivePhase(phase)) setDozing(false)
       }, [dozing, phase])
 
       /* 相位换了就恢复气泡：同一句台词不会因为之前点掉过而永久消失。 */
@@ -1916,6 +1925,7 @@ window.__ModuleLoader__.load({
                 bubbleSub ? h('div', { className: 'shp-bubble-s' }, bubbleSub) : null,
               )
             : null,
+          dozing ? h('div', { key: 'zz', className: 'shp-zz', 'aria-hidden': true }, 'z z') : null,
           h(
             'div',
             {
@@ -2026,6 +2036,7 @@ window.__ModuleLoader__.load({
       IDLE_ACTS,
       PetCard,
       pickSkinLine,
+      isActivePhase,
       speechText,
       speechSub,
       toolLabel,

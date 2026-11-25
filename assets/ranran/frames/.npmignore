@@ -1,0 +1,19 @@
+# 这些立绘帧不在任何运行时轨道里，保留在仓库做素材源，不打进 npm 包。
+base.png
+blink.png
+breath.png
+footSwing.png
+handEar.png
+noant.png
+ntBlink.png
+ntFootSwing.png
+ntHandEar.png
+ntSmile.png
+ntTurn.png
+ntTurnL.png
+ntWave.png
+ropeAir.png
+ropeLand.png
+turnL.png
+walkP1.png
+walkP2.png

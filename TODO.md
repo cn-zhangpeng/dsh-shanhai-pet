@@ -56,7 +56,8 @@
 - [x] **npm 发布**：`dsh-shanhai-pet@1.3.0` 已发布（2026-11-25），
       `dsh plugin --profile web add dsh-shanhai-pet` 可用；publish workflow 需要仓库 Secret
       `NPM_TOKEN`（Granular token，勾选 Bypass 2FA）。
-- [ ] **包体瘦身**：26 张未引用帧还在包里（6.4MB），清理后约 2.8MB，随下个版本发。
+- [x] **包体瘦身**：18 张非运行时帧由 `assets/ranran/frames/.npmignore` 排除在 npm 包外
+      （仓库仍保留做素材源），包体 6.4MB → 3.7MB，随 1.3.1 发布。
 - [x] **设置页预览**：`tests/preview-settings.mjs` 把设置页渲染成静态 HTML
       （`tests/out/settings-preview.html`），改样式后先截图看排版（2026-11-19）。
 - [x] **CI**：`.github/workflows/ci.yml` 在 push / PR 上跑语法检查、host/client 烟测、

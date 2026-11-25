@@ -206,6 +206,18 @@ assert.ok(
   '顶部空间不足时翻到下方',
 )
 
+/* 打盹只在真正开工时自动醒：done/failed/waiting 不算干活 */
+assert.equal(typeof exported.isActivePhase, 'function', '导出 isActivePhase 供测试')
+assert.equal(exported.isActivePhase('listening'), true)
+assert.equal(exported.isActivePhase('thinking'), true)
+assert.equal(exported.isActivePhase('tool'), true)
+assert.equal(exported.isActivePhase('review'), true)
+assert.equal(exported.isActivePhase('done'), false, '收工状态不叫醒')
+assert.equal(exported.isActivePhase('failed'), false, '出错状态不叫醒')
+assert.equal(exported.isActivePhase('waiting'), false, '等待审批不叫醒')
+assert.equal(exported.isActivePhase('idle'), false)
+assert.equal(exported.isActivePhase(null), false)
+
 /* 拖动收尾：位移超过阈值后把新位置写回设置（POST /settings） */
 const calls = []
 sandbox.fetch = async (url, init) => {
