@@ -297,7 +297,7 @@ window.__ModuleLoader__.load({
       '.shp-root.shp-dozing .shp-img{animation:none}',
       '.shp-zz{position:absolute;left:0;right:0;bottom:calc(100% - 8px);display:flex;justify-content:center;',
       'pointer-events:none}',
-      '.shp-zz span{font-size:12px;letter-spacing:2px;color:#8a7f74;',
+      '.shp-zz span{font-size:16px;letter-spacing:3px;color:#8a7f74;',
       'animation:shp-float 3.2s ease-in-out infinite}',
       /* 真正隐藏后留一个边缘小按钮，点它召唤回来 */
       '.shp-summon{position:fixed;right:0;bottom:14px;padding:6px 7px;border:1.5px solid #5d5449;border-right:0;',

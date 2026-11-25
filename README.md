@@ -133,7 +133,7 @@ dsh plugin --profile web add dsh-shanhai-pet
 
 > 锁定版本安装（更安全，推荐生产环境）：
 > ```bash
-> dsh plugin --profile web add dsh-shanhai-pet@1.3.2
+> dsh plugin --profile web add dsh-shanhai-pet@1.3.3
 > ```
 
 也可以直接从 GitHub 安装（未发布到 npm 的分支 / 提交）：
