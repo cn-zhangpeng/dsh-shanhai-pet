@@ -1,6 +1,7 @@
 # dsh-shanhai-pet
 
 [![CI](https://github.com/cn-zhangpeng/dsh-shanhai-pet/actions/workflows/ci.yml/badge.svg)](https://github.com/cn-zhangpeng/dsh-shanhai-pet/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/dsh-shanhai-pet)](https://www.npmjs.com/package/dsh-shanhai-pet)
 
 DeepSeek Harness 桌宠插件（山海紫穹系列）：一只住在会话旁的桌面小灵宠「冉冉」。
 
@@ -123,16 +124,22 @@ DeepSeek Harness 桌宠插件（山海紫穹系列）：一只住在会话旁的
 
 ## 安装
 
-### 方式一：插件命令（推荐）
+### 方式一：npm（推荐）
 
 ```bash
-dsh plugin --profile web add github:cn-zhangpeng/dsh-shanhai-pet
+dsh plugin --profile web add dsh-shanhai-pet
 ```
 
 > 锁定版本安装（更安全，推荐生产环境）：
 > ```bash
-> dsh plugin --profile web add github:cn-zhangpeng/dsh-shanhai-pet#v1.3.0
+> dsh plugin --profile web add dsh-shanhai-pet@1.3.0
 > ```
+
+也可以直接从 GitHub 安装（未发布到 npm 的分支 / 提交）：
+
+```bash
+dsh plugin --profile web add github:cn-zhangpeng/dsh-shanhai-pet
+```
 
 更新 / 卸载：
 

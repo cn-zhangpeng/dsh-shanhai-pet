@@ -53,10 +53,10 @@
 
 ## 工程
 
-- [ ] **npm 占名**：`dsh-shanhai-pet` 在 npm registry 仍是 404（未发布）；发版流程已就绪
-      （`.github/workflows/publish.yml` 手动触发，需要仓库 Secret `NPM_TOKEN`），
-      本地 `npm login` 后也可直接 `npm publish --access public --provenance`。
-      发布前可先清理 26 张未引用帧，把包体从 6.4MB 降到 ~2.8MB。
+- [x] **npm 发布**：`dsh-shanhai-pet@1.3.0` 已发布（2026-11-25），
+      `dsh plugin --profile web add dsh-shanhai-pet` 可用；publish workflow 需要仓库 Secret
+      `NPM_TOKEN`（Granular token，勾选 Bypass 2FA）。
+- [ ] **包体瘦身**：26 张未引用帧还在包里（6.4MB），清理后约 2.8MB，随下个版本发。
 - [x] **设置页预览**：`tests/preview-settings.mjs` 把设置页渲染成静态 HTML
       （`tests/out/settings-preview.html`），改样式后先截图看排版（2026-11-19）。
 - [x] **CI**：`.github/workflows/ci.yml` 在 push / PR 上跑语法检查、host/client 烟测、
