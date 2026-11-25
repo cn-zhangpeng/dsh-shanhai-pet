@@ -49,15 +49,25 @@ DeepSeek Harness 桌宠插件（山海紫穹系列）：一只住在会话旁的
 
 ```
 我的皮肤/
-  pet.json        # 帧清单（与内置同格式，width/height 可不同，按比例缩放）
+  pet.json        # 帧清单 + 可选 displayName / author / license / lines
   frames/         # 立绘帧 PNG（名字与 pet.json 里轨道引用的帧名一致）
   anim/           # 可选：多帧轨道的循环动画 webp
 ```
 
+`pet.json` 里这几项是可选的：`displayName`（显示名）、`author` / `license`（预览卡上的
+作者与素材授权）、`lines`（皮肤自带台词池，支持 `poke` / `greet` / `done` / `failed`，
+缺省用内置文案）。例：
+
+```jsonc
+"lines": { "poke": ["别戳啦", "再戳就生气咯"], "done": ["收工啦"] }
+```
+
 - 设置页 → 素材 → **上传皮肤文件夹**（选整个文件夹），传完自动启用；
   也可以直接把文件夹放进 `$DSH_HOME/shanhai-pet/skins/`，设置页会扫描出来
+- 皮肤以**预览卡**列出：首帧缩略图、名字、作者/授权、台词条数
+- 上传时校验结构：缺轨道、`durations` 与帧数对不上、`lines` 类型不对都会当场提示原因
 - 上传限额：单文件 ≤ 8MB、每套 ≤ 120 个文件
-- 切换：素材组里点"启用"；切回内置选"内置冉冉"
+- 切换：点卡片上的"启用"；切回内置选"冉冉"
 - 删除皮肤：手动移除 `skins/` 下对应文件夹
 
 ## 特性
@@ -121,7 +131,7 @@ dsh plugin --profile web add github:cn-zhangpeng/dsh-shanhai-pet
 
 > 锁定版本安装（更安全，推荐生产环境）：
 > ```bash
-> dsh plugin --profile web add github:cn-zhangpeng/dsh-shanhai-pet#v1.2.0
+> dsh plugin --profile web add github:cn-zhangpeng/dsh-shanhai-pet#v1.3.0
 > ```
 
 更新 / 卸载：

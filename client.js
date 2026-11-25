@@ -65,6 +65,8 @@ window.__ModuleLoader__.load({
       settings_skin_uploading: '上传中',
       settings_skin_done: '上传完成，已启用',
       settings_skin_failed: '有文件上传失败',
+      settings_skin_error: '皮肤没通过校验：',
+      settings_skin_lines: '{n} 句台词',
       settings_skin_hint:
         '目录结构：pet.json + frames/ 立绘 + anim/ 动画；单文件 ≤ 8MB、至多 120 个；皮肤缺的帧回落内置冉冉；删除请手动移除 skins 下对应文件夹。',
       settings_visible: '显示灵宠',
@@ -167,6 +169,8 @@ window.__ModuleLoader__.load({
       settings_skin_uploading: 'Uploading',
       settings_skin_done: 'Uploaded and enabled',
       settings_skin_failed: 'Some files failed to upload',
+      settings_skin_error: 'Skin failed validation: ',
+      settings_skin_lines: '{n} lines',
       settings_skin_hint:
         'Layout: pet.json + frames/ sprites + anim/ animations; ≤ 8MB per file, up to 120; missing frames fall back to the built-in skin; remove a skin by deleting its folder.',
       settings_visible: 'Show the pet',
@@ -326,6 +330,14 @@ window.__ModuleLoader__.load({
       '.shp-s-group-t{font-size:12px;font-weight:600;color:var(--dsw-alias-label-secondary)}',
       '.shp-s-card{border:1px solid var(--dsw-alias-border-l1);border-radius:10px;',
       'background:var(--dsw-alias-bg-layer-1);overflow:hidden}',
+      '.shp-s-skins{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;padding:10px}',
+      '.shp-s-skin{display:flex;align-items:center;gap:8px;padding:6px;border:1px solid var(--dsw-alias-border-l1);',
+      'border-radius:9px;background:var(--dsw-alias-bg-layer-1)}',
+      '.shp-s-skin-on{border-color:var(--dsw-alias-brand-primary,#e0a63f)}',
+      '.shp-s-skin-thumb{width:34px;height:52px;flex:none;object-fit:contain;border-radius:5px;',
+      'background:rgba(0,0,0,.05)}',
+      '.shp-s-invalid{padding:0 12px 10px;font-size:11px;line-height:1.6;overflow-wrap:anywhere;',
+      'color:var(--dsw-alias-state-error-primary,#d9534f)}',
       '.shp-s-row{display:flex;align-items:center;gap:14px;padding:10px 14px;',
       'border-top:1px solid var(--dsw-alias-border-l1)}',
       '.shp-s-row:first-child{border-top:0}',
@@ -415,17 +427,27 @@ window.__ModuleLoader__.load({
       )
     }
 
-    /** 台词主文案。未知 kind/state 返回 null（气泡回落相位 label）。 */
-    function speechText(t, speech) {
+    /** 皮肤自带台词：按种子稳定挑一条（同一句播报不会每次轮询都换），空池返回空串。 */
+    function pickSkinLine(pool, seed) {
+      if (!Array.isArray(pool)) return ''
+      const list = pool.filter((line) => typeof line === 'string' && line.trim())
+      if (!list.length) return ''
+      const index = Math.abs(Math.floor(Number(seed) || 0)) % list.length
+      return list[index].trim()
+    }
+
+    /** 台词主文案。未知 kind/state 返回 null（气泡回落相位 label）；lines 是皮肤自带台词。 */
+    function speechText(t, speech, lines) {
       if (!speech || !speech.kind) return null
+      const custom = (key) => pickSkinLine(lines && lines[key], speech.at || speech.total || 0)
       if (speech.kind === 'todo') {
         if (speech.state === 'step') return fill(t('speech.step'), speech)
         if (speech.state === 'plan') return fill(t('speech.plan'), speech)
         if (speech.state === 'alldone') return fill(t('speech.alldone'), speech)
         return null
       }
-      if (speech.kind === 'done') return fill(t('speech.done'), speech)
-      if (speech.kind === 'failed') return fill(t('speech.failed'), speech)
+      if (speech.kind === 'done') return custom('done') || fill(t('speech.done'), speech)
+      if (speech.kind === 'failed') return custom('failed') || fill(t('speech.failed'), speech)
       if (speech.kind === 'waiting') return fill(t('speech.waiting'), speech)
       return null
     }
@@ -494,7 +516,14 @@ window.__ModuleLoader__.load({
     const brokenAnims = new Set()
 
     /* 内置皮肤条目（Host 列表恒在首位；activeSkin 为空或等于 ranran 都算内置生效）。 */
-    const SKIN_BUILTIN_ROW = { name: 'ranran', title: '冉冉' }
+    const SKIN_BUILTIN_ROW = {
+      name: 'ranran',
+      title: '冉冉',
+      thumb: ASSET_BASE + 'frames/breathopen.png',
+      author: '',
+      license: '',
+      lines: 0,
+    }
 
     function sameSettings(a, b) {
       if (!a || !b) return false
@@ -867,6 +896,7 @@ window.__ModuleLoader__.load({
       const [company, setCompany] = React.useState(null)
       const [skins, setSkins] = React.useState(null)
       const [uploadState, setUploadState] = React.useState({ phase: '', done: 0, total: 0, failed: 0 })
+      const [skinError, setSkinError] = React.useState('')
       const fileInputRef = React.useRef(null)
       const pending = React.useRef(null)
       const debounce = React.useRef(0)
@@ -970,6 +1000,7 @@ window.__ModuleLoader__.load({
         const first = relativePathOf(files[0])
         const name = (first.includes('/') ? first.split('/')[0] : 'my-skin').slice(0, 32) || 'my-skin'
         setUploadState({ phase: 'busy', done: 0, total: files.length, failed: 0 })
+        setSkinError('')
         let done = 0
         let failed = 0
         for (const file of files) {
@@ -980,8 +1011,18 @@ window.__ModuleLoader__.load({
               headers: { 'content-type': 'application/json' },
               body: JSON.stringify({ op: 'upload', name, path: relativePathOf(file), data }),
             })
-            if (res.ok) done += 1
-            else failed += 1
+            if (res.ok) {
+              done += 1
+            } else {
+              failed += 1
+              try {
+                const info = await res.json()
+                const reason = info && (info.error || (Array.isArray(info.issues) && info.issues[0]))
+                if (reason) setSkinError(String(reason))
+              } catch {
+                /* 响应不是 JSON 就只记失败数 */
+              }
+            }
           } catch {
             failed += 1
           }
@@ -1167,24 +1208,48 @@ window.__ModuleLoader__.load({
           h(
             'div',
             { className: 'shp-s-card' },
-            (skins && Array.isArray(skins.skins) ? skins.skins : [Object.assign({ title: t('overlay_label') }, SKIN_BUILTIN_ROW)]).map(
-              (skin) =>
-                h(
-                  Row,
-                  { key: skin.name, label: skin.title, hint: skin.name },
-                  skins && (skins.active === skin.name || (skin.name === 'ranran' && skins.active === ''))
-                    ? h('span', { className: 'shp-s-val' }, t('settings_skin_active'))
-                    : h(
-                        'button',
-                        {
-                          type: 'button',
-                          className: 'shp-s-btn',
-                          onClick: () => selectSkin(skin.name),
-                        },
-                        t('settings_skin_use'),
-                      ),
-                ),
-            ),
+            (() => {
+              const list = skins && Array.isArray(skins.skins) ? skins.skins : [Object.assign({ title: t('overlay_label'), thumb: '' }, SKIN_BUILTIN_ROW)]
+              return h(
+                'div',
+                { className: 'shp-s-skins' },
+                ...list.map((skin) => {
+                  const active = Boolean(skins && (skins.active === skin.name || (skin.name === 'ranran' && skins.active === '')))
+                  const meta = [skin.author ? 'by ' + skin.author : '', skin.license, skin.lines ? t('settings_skin_lines').replace('{n}', String(skin.lines)) : '']
+                    .filter(Boolean)
+                    .join(' · ')
+                  return h(
+                    'div',
+                    { key: skin.name, className: 'shp-s-skin' + (active ? ' shp-s-skin-on' : '') },
+                    skin.thumb
+                      ? h('img', { className: 'shp-s-skin-thumb', src: skin.thumb, alt: '', loading: 'lazy', draggable: false })
+                      : null,
+                    h(
+                      'div',
+                      { className: 'shp-s-main' },
+                      h('div', { className: 'shp-s-label' }, skin.title),
+                      h('div', { className: 'shp-s-hint' }, meta || skin.name),
+                    ),
+                    active
+                      ? h('span', { className: 'shp-s-val' }, t('settings_skin_active'))
+                      : h(
+                          'button',
+                          { type: 'button', className: 'shp-s-btn', onClick: () => selectSkin(skin.name) },
+                          t('settings_skin_use'),
+                        ),
+                  )
+                }),
+              )
+            })(),
+            skins && Array.isArray(skins.invalid) && skins.invalid.length
+              ? h(
+                  'div',
+                  { className: 'shp-s-invalid' },
+                  ...skins.invalid.map((item) =>
+                    h('div', { key: item.name }, item.name + '：' + item.error),
+                  ),
+                )
+              : null,
             h(
               Row,
               {
@@ -1199,7 +1264,9 @@ window.__ModuleLoader__.load({
                 hint:
                   uploadState.phase === 'busy'
                     ? uploadState.done + ' / ' + uploadState.total
-                    : t('settings_skin_hint'),
+                    : skinError
+                      ? t('settings_skin_error') + skinError
+                      : t('settings_skin_hint'),
               },
               h(
                 'button',
@@ -1464,6 +1531,11 @@ window.__ModuleLoader__.load({
 
       const phase = state && state.phase ? String(state.phase) : 'idle'
       const detail = state && state.detail ? state.detail : null
+      /* 皮肤可以自带台词：poke / greet / done / failed，缺省回落内置文案。 */
+      const skinLines =
+        manifest && manifest.lines && typeof manifest.lines === 'object' && !Array.isArray(manifest.lines)
+          ? manifest.lines
+          : {}
       /* 待机小动作：idle 时随机插一段生活动作，干活/戳一戳/里程碑时让位。 */
       const [idleAct, playIdleAct] = useIdleAct(manifest, phase, settings.idleAct && !dozing, reduced)
       /* 闲时问候与里程碑：先于轨道选择算好，里程碑当天第一次问候用点灯轨道庆祝。 */
@@ -1570,11 +1642,14 @@ window.__ModuleLoader__.load({
         setDismissedBubble('')
       }, [phase])
 
-      const pokeLines = [t('poke1'), t('poke2'), t('poke3'), t('poke4')]
+      const skinPokes = Array.isArray(skinLines.poke)
+        ? skinLines.poke.filter((line) => typeof line === 'string' && line.trim())
+        : []
+      const pokeLines = skinPokes.length ? skinPokes : [t('poke1'), t('poke2'), t('poke3'), t('poke4')]
       const onPoke = () => {
         const idx = Math.floor(Math.random() * pokeLines.length)
         setPoke(pokeLines[idx])
-        setPokeTrack('poke' + (idx + 1))
+        setPokeTrack('poke' + ((idx % 4) + 1))
         window.clearTimeout(pokeTimer.current)
         pokeTimer.current = window.setTimeout(() => {
           setPoke(null)
@@ -1591,11 +1666,11 @@ window.__ModuleLoader__.load({
           speechMark.current.at === speech.at &&
           Date.now() - speechMark.current.got < SPEECH_HOLD_MS,
       )
-      const narrateText = speechLive ? speechText(t, speech) : null
+      const narrateText = speechLive ? speechText(t, speech, skinLines) : null
       const greetText = greetLive
         ? milestoneGreetLive
           ? greetingMilestone(t, greet.milestone)
-          : greetingText(t, new Date().getHours())
+          : pickSkinLine(skinLines.greet, greet.at) || greetingText(t, new Date().getHours())
         : null
       const showBubble =
         settings.bubble &&
@@ -1950,6 +2025,7 @@ window.__ModuleLoader__.load({
       pickIdleAct,
       IDLE_ACTS,
       PetCard,
+      pickSkinLine,
       speechText,
       speechSub,
       toolLabel,

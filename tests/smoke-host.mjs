@@ -24,6 +24,8 @@ const {
   readCompany,
   tickCompany,
   listSkins,
+  scanSkins,
+  validateSkinManifest,
   skinsRoot,
   DEFAULT_SETTINGS,
 } = await import('../index.js')
@@ -501,6 +503,35 @@ await mkdir(badSkinDir, { recursive: true })
 await writeFile(path.join(badSkinDir, 'pet.json'), 'not-json', 'utf8')
 const scannedAfter = await listSkins(skinsRoot())
 assert.ok(!scannedAfter.some((s) => s.name === 'bad-skin'), '坏皮肤目录不进列表')
+
+/* 皮肤清单校验：结构问题给 readable 原因 */
+assert.deepEqual(validateSkinManifest({ frames2d: { tracks: { idle: { frames: ['a'] } } } }), [], '最小可用清单通过')
+assert.ok(validateSkinManifest(null).length, '空清单被拒')
+assert.ok(validateSkinManifest({ frames2d: {} }).some((s) => s.includes('tracks')), '缺 tracks 被拒')
+assert.ok(
+  validateSkinManifest({ frames2d: { tracks: { idle: { frames: ['a'], durations: [1, 2] } } } }).some((s) => s.includes('durations')),
+  'durations 数量不一致被拒',
+)
+assert.ok(
+  validateSkinManifest({ frames2d: { tracks: { idle: { frames: ['a'] } } }, lines: { poke: 'x' } }).some((s) => s.includes('lines.poke')),
+  'lines 不是数组被拒',
+)
+
+const scanAll = await scanSkins(skinsRoot())
+const goodSkin = scanAll.skins.find((s) => s.name === 'myskin')
+assert.ok(goodSkin && goodSkin.thumb.includes('/assets/frames/'), '可用皮肤带首帧缩略图')
+assert.equal(goodSkin.title, '测试皮肤', '标题来自 displayName')
+assert.ok(scanAll.invalid.some((item) => item.name === 'bad-skin' && item.error), '坏皮肤带错误原因')
+
+const badManifest = await postSkin({
+  op: 'upload',
+  name: 'badman',
+  path: 'pet.json',
+  data: Buffer.from('{"frames2d":{}}').toString('base64'),
+})
+assert.equal(badManifest.status, 400, '坏清单上传被拒')
+const badManifestBody = await badManifest.json()
+assert.ok(Array.isArray(badManifestBody.issues) && badManifestBody.issues.length, '响应带具体原因')
 
 const selectMissing = await postSkin({ op: 'select', name: 'nope' })
 assert.equal(selectMissing.status, 400, '选择不存在的皮肤被拒')

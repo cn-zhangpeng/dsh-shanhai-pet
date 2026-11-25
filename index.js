@@ -12,7 +12,7 @@
  *       只读暴露给渲染层。
  */
 
-import { mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, realpath, rename, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -54,7 +54,16 @@ const SKIN_NAME_RE = /^[a-zA-Z0-9_\u4e00-\u9fa5-]{1,32}$/
 const SKIN_ASSET_RE = /^(pet\.json|frames\/[a-zA-Z0-9_-]+\.(png|webp|gif)|anim\/[a-zA-Z0-9_-]+\.(webp|gif))$/
 const SKIN_MAX_FILE_BYTES = 8 * 1024 * 1024
 const SKIN_MAX_FILES = 120
-const SKIN_BUILTIN = { name: 'ranran', title: '冉冉' }
+const SKIN_BUILTIN = {
+  name: 'ranran',
+  title: '冉冉',
+  thumb: '/api/shanhai-pet/assets/frames/breathopen.png',
+  author: '',
+  license: '',
+  lines: 0,
+}
+const SKIN_LINE_KEYS = ['poke', 'greet', 'done', 'failed']
+const SKIN_ISSUE_LIMIT = 6
 
 /**
  * 工具族：先后顺序决定匹配优先级。
@@ -212,30 +221,122 @@ async function countSkinFiles(dir) {
   return count
 }
 
-/** 扫描自定义皮肤：目录里有可解析的 pet.json（含 frames2d.tracks）才算皮肤。 */
-export async function listSkins(root = skinsRoot()) {
+/** 统计皮肤自带台词条数（只数白名单里的几组）。 */
+function countSkinLines(manifest) {
+  const lines = manifest && manifest.lines
+  if (!lines || typeof lines !== 'object') return 0
+  let total = 0
+  for (const key of SKIN_LINE_KEYS) {
+    const pool = lines[key]
+    if (Array.isArray(pool)) total += pool.filter((line) => typeof line === 'string' && line.trim()).length
+  }
+  return total
+}
+
+/**
+ * 皮肤清单校验：只查结构，不碰文件系统（扫描时另有帧回退）。
+ * 返回可读的问题列表，空数组代表可用；最多 SKIN_ISSUE_LIMIT 条。
+ */
+export function validateSkinManifest(manifest) {
+  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) return ['pet.json 必须是对象']
+  const frames2d = manifest.frames2d
+  if (!frames2d || typeof frames2d !== 'object') return ['缺少 frames2d']
+  const tracks = frames2d.tracks
+  if (!tracks || typeof tracks !== 'object' || Array.isArray(tracks)) return ['缺少 frames2d.tracks']
+  const names = Object.keys(tracks)
+  if (!names.length) return ['frames2d.tracks 为空']
+
+  const issues = []
+  const push = (message) => {
+    if (issues.length < SKIN_ISSUE_LIMIT) issues.push(message)
+  }
+  if (names.length > 40) push('轨道过多（' + names.length + ' 条）')
+  for (const name of names.slice(0, 40)) {
+    const track = tracks[name]
+    if (!track || typeof track !== 'object') {
+      push('轨道 ' + name + ' 不是对象')
+      continue
+    }
+    if (!Array.isArray(track.frames) || !track.frames.length) {
+      push('轨道 ' + name + ' 没有帧')
+      continue
+    }
+    if (track.frames.some((frame) => typeof frame !== 'string' || !frame.trim())) {
+      push('轨道 ' + name + ' 的帧名必须是字符串')
+    }
+    if (Array.isArray(track.durations) && track.durations.length && track.durations.length !== track.frames.length) {
+      push('轨道 ' + name + ' 的 durations 与 frames 数量不一致')
+    }
+  }
+  for (const key of ['width', 'height']) {
+    if (frames2d[key] !== undefined && !(Number.isFinite(frames2d[key]) && frames2d[key] > 0)) {
+      push('frames2d.' + key + ' 必须是正数')
+    }
+  }
+  if (manifest.lines !== undefined) {
+    if (!manifest.lines || typeof manifest.lines !== 'object' || Array.isArray(manifest.lines)) {
+      push('lines 必须是对象')
+    } else {
+      for (const key of Object.keys(manifest.lines)) {
+        const pool = manifest.lines[key]
+        if (!Array.isArray(pool) || pool.some((line) => typeof line !== 'string')) {
+          push('lines.' + key + ' 必须是字符串数组')
+        }
+      }
+    }
+  }
+  return issues
+}
+
+/**
+ * 扫描自定义皮肤目录：可用皮肤与坏皮肤分开返回，坏的要带上人能看懂的原因。
+ * 皮肤目录里有 pet.json、结构校验通过、且能挑出一条 idle 帧才算可用。
+ */
+export async function scanSkins(root = skinsRoot()) {
   let entries = []
   try {
     entries = await readdir(root, { withFileTypes: true })
   } catch {
-    return []
+    return { skins: [], invalid: [] }
   }
   const skins = []
+  const invalid = []
   for (const entry of entries) {
     if (!entry.isDirectory()) continue
+    let manifest = null
     try {
-      const manifest = JSON.parse(await readFile(path.join(root, entry.name, 'pet.json'), 'utf8'))
-      const tracks = manifest && manifest.frames2d && manifest.frames2d.tracks
-      if (!tracks || typeof tracks !== 'object') continue
-      skins.push({ name: entry.name, title: String(manifest.displayName || entry.name) })
+      manifest = JSON.parse(await readFile(path.join(root, entry.name, 'pet.json'), 'utf8'))
     } catch {
-      /* 坏目录跳过，不进列表 */
+      invalid.push({ name: entry.name, error: 'pet.json 缺失或不是合法 JSON' })
+      continue
     }
+    const issues = validateSkinManifest(manifest)
+    if (issues.length) {
+      invalid.push({ name: entry.name, error: issues[0], issues })
+      continue
+    }
+    const tracks = manifest.frames2d.tracks
+    const idleName = tracks.idle ? 'idle' : Object.keys(tracks)[0]
+    const firstFrame = tracks[idleName].frames[0]
+    skins.push({
+      name: entry.name,
+      title: String(manifest.displayName || entry.name).slice(0, 40),
+      author: String(manifest.author || '').slice(0, 40),
+      license: String(manifest.license || '').slice(0, 40),
+      lines: countSkinLines(manifest),
+      thumb: firstFrame ? ASSETS_PREFIX + '/frames/' + encodeURIComponent(firstFrame) + '.png' : '',
+    })
   }
-  return skins.sort((a, b) => a.name.localeCompare(b.name, 'zh'))
+  const byName = (a, b) => a.name.localeCompare(b.name, 'zh')
+  return { skins: skins.sort(byName), invalid: invalid.sort(byName) }
 }
 
-/** 皮肤内单文件原子写（二进制安全），并拦截路径逃逸。 */
+/** 只取可用皮肤（保持旧签名，供测试与内部调用）。 */
+export async function listSkins(root = skinsRoot()) {
+  return (await scanSkins(root)).skins
+}
+
+/** 皮肤内单文件原子写（二进制安全），并拦截路径逃逸 / 软链接逃逸。 */
 export async function writeSkinFile(root, rel, buffer) {
   const resolved = path.resolve(root, rel)
   const resolvedRoot = path.resolve(root)
@@ -243,6 +344,12 @@ export async function writeSkinFile(root, rel, buffer) {
     throw new Error('path escapes skin dir')
   }
   await mkdir(path.dirname(resolved), { recursive: true })
+  /* mkdir 之后解析软链接：frames/ 被指向别处时写入也要拒绝。 */
+  const realRoot = await realpath(resolvedRoot).catch(() => resolvedRoot)
+  const realDir = await realpath(path.dirname(resolved)).catch(() => path.dirname(resolved))
+  if (realDir !== realRoot && !realDir.startsWith(realRoot + path.sep)) {
+    throw new Error('path escapes skin dir')
+  }
   const tmp = resolved + '.tmp'
   await writeFile(tmp, buffer)
   await rename(tmp, resolved)
@@ -767,7 +874,14 @@ export function apply(ctx) {
           const skinDir = skinDirFor()
           if (skinDir) {
             try {
-              buf = await readFile(path.join(skinDir, rel))
+              /* 皮肤目录里的软链接不许把读取带出目录；单文件也设上限。 */
+              const realSkin = await realpath(skinDir)
+              const realFile = await realpath(path.join(skinDir, rel))
+              const inside = realFile === realSkin || realFile.startsWith(realSkin + path.sep)
+              if (inside) {
+                const info = await stat(realFile)
+                if (info.isFile() && info.size <= SKIN_MAX_FILE_BYTES) buf = await readFile(realFile)
+              }
             } catch {
               buf = null
             }
@@ -866,10 +980,10 @@ export function apply(ctx) {
         handler: async (req, res) => {
           const method = String(req.method || 'GET').toUpperCase()
           if (method === 'GET' || method === 'HEAD') {
-            const custom = await listSkins(skinsRoot())
+            const custom = await scanSkins(skinsRoot())
             sendJson(
               res,
-              { ok: true, active: settings.activeSkin, skins: [SKIN_BUILTIN, ...custom] },
+              { ok: true, active: settings.activeSkin, skins: [SKIN_BUILTIN, ...custom.skins], invalid: custom.invalid },
               method === 'HEAD',
             )
             return
@@ -922,6 +1036,19 @@ export function apply(ctx) {
             } catch (err) {
               sendJson(res, { ok: false, error: 'write failed: ' + String((err && err.message) || err) }, false, 400)
               return
+            }
+            /* pet.json 一落地就校验，问题直接回给上传端，别等用户切皮肤才发现。 */
+            if (rel === 'pet.json') {
+              let issues = []
+              try {
+                issues = validateSkinManifest(JSON.parse(buffer.toString('utf8')))
+              } catch {
+                issues = ['pet.json 不是合法 JSON']
+              }
+              if (issues.length) {
+                sendJson(res, { ok: false, error: issues[0], issues }, false, 400)
+                return
+              }
             }
             sendJson(res, { ok: true, name, path: rel, bytes: buffer.length }, false)
             return

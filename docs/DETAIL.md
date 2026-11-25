@@ -95,7 +95,22 @@ Host 在 `GET /api/shanhai-pet/state` 的每次请求上推进陪伴计时：客
    逐文件一请求；`path` 白名单 `pet.json` / `frames/*.(png|webp|gif)` / `anim/*.(webp|gif)`，
    单文件解码后 ≤ 8MB（超限 413），每套 ≤ 120 个文件，目录名 1-32 位字母数字汉字_-
 2. **目录扫描**：手动把文件夹放进 `skins/`，`GET /api/shanhai-pet/skins` 会列出
-   （`pet.json` 可解析且含 `frames2d.tracks` 才算皮肤，坏目录跳过）
+   （`pet.json` 结构校验通过才算皮肤；坏目录进 `invalid[]` 并带原因，设置页直接显示）
+
+`pet.json` 除帧清单外还可以带（都可选）：
+
+| 字段 | 作用 |
+| --- | --- |
+| `displayName` | 卡片/设置页显示的名字 |
+| `author` / `license` | 预览卡上的作者与素材授权 |
+| `lines` | 皮肤自带台词池：`poke` / `greet` / `done` / `failed`，缺省回落内置文案 |
+
+校验（`validateSkinManifest`）：`frames2d.tracks` 非空、每条轨道有 `frames`、
+`durations` 数量与 `frames` 一致、`width/height` 为正数、`lines.*` 是字符串数组；
+上传 `pet.json` 时立即校验，问题以 `issues[]` 返回给设置页。
+
+皮肤资源读取做软链接围栏：`realpath` 解析后必须仍在皮肤目录内，单文件上限
+`SKIN_MAX_FILE_BYTES`；写入同样在 `mkdir` 后复查 `realpath`，`frames/` 被指向别处也拒。
 
 切换：`POST` `{op:'select', name}`（空串 = 回内置），写进 `settings.activeSkin`
 持久化。解析规则：
