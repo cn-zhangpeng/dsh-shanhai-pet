@@ -87,8 +87,15 @@ window.__ModuleLoader__.load({
       menu_bubble_on: '隐藏气泡',
       menu_bubble_off: '显示气泡',
       menu_hide: '先藏起来',
+      menu_doze: '打个盹',
+      menu_wake: '叫醒',
+      menu_summon: '召唤',
+      card_phase: '现在',
+      card_sessions: '{n} 个会话在跑',
+      card_skin: '皮肤',
+      bubble_dismiss: '点一下收起',
       settings_bubble: '状态气泡',
-      settings_bubble_hint: '非待机时在头顶显示当前状态。',
+      settings_bubble_hint: '非待机时在头顶显示当前状态；点气泡可以收起。',
       settings_narrate: '进度播报',
       settings_narrate_hint: '她用台词汇报任务做到哪一步（清单步骤、收工、出错）。',
       settings_poke: '点击互动',
@@ -182,8 +189,15 @@ window.__ModuleLoader__.load({
       menu_bubble_on: 'Hide bubbles',
       menu_bubble_off: 'Show bubbles',
       menu_hide: 'Hide for now',
+      menu_doze: 'Take a nap',
+      menu_wake: 'Wake up',
+      menu_summon: 'Summon',
+      card_phase: 'Now',
+      card_sessions: '{n} sessions running',
+      card_skin: 'Skin',
+      bubble_dismiss: 'Click to dismiss',
       settings_bubble: 'Status bubble',
-      settings_bubble_hint: 'Show what she is up to above her while busy.',
+      settings_bubble_hint: 'Show what she is up to above her while busy; click the bubble to dismiss it.',
       settings_narrate: 'Progress narration',
       settings_narrate_hint: 'She reports task progress in her own words: todo steps, done, snags.',
       settings_poke: 'Click to interact',
@@ -254,17 +268,30 @@ window.__ModuleLoader__.load({
       /* 拖动中：停掉过渡/浮动动画和 hover 抬升，跟手 */
       '.shp-root.shp-dragging .shp-pet{transition:none;transform:none}',
       '.shp-root.shp-dragging .shp-img{animation:none}',
-      /* 右键/长按菜单：浮在立绘上方（顶部不够时翻到下方） */
-      '.shp-menu{position:absolute;right:0;bottom:calc(100% + 8px);min-width:128px;padding:5px;display:flex;',
-      'flex-direction:column;gap:2px;background:#fffdf6;border:1.5px solid #5d5449;border-radius:10px;',
-      'box-shadow:0 8px 22px rgba(0,0,0,.18);pointer-events:auto;z-index:3;animation:shp-in .16s ease}',
-      '.shp-menu.shp-menu-down{bottom:auto;top:calc(100% + 8px)}',
-      '.shp-menu-b{appearance:none;border:0;background:transparent;text-align:left;padding:7px 10px;',
-      'border-radius:7px;font:inherit;font-size:12px;color:#4a4038;cursor:pointer;white-space:nowrap}',
-      '.shp-menu-b:hover{background:rgba(93,84,73,.12)}',
-      '.shp-menu-b:focus-visible{outline:2px solid #e0a63f;outline-offset:1px}',
+      /* 悬停/长按信息卡：名字、当前状态、陪伴，以及常用动作。 */
+      '.shp-card{position:absolute;right:0;bottom:calc(100% + 8px);width:220px;max-width:calc(100vw - 28px);',
+      'box-sizing:border-box;padding:10px 11px;display:flex;',
+      'flex-direction:column;gap:6px;background:#fffdf6;border:1.5px solid #5d5449;border-radius:12px;',
+      'box-shadow:0 10px 26px rgba(0,0,0,.2);pointer-events:auto;z-index:3;animation:shp-in .16s ease}',
+      '.shp-card.shp-card-down{bottom:auto;top:calc(100% + 8px)}',
+      '.shp-card-t{font-size:13px;font-weight:600;color:#4a4038;display:flex;align-items:center;gap:6px}',
+      '.shp-card-s{font-size:11px;line-height:1.6;color:#8a7f74;display:flex;flex-direction:column}',
+      '.shp-card-acts{display:flex;flex-wrap:wrap;gap:4px;margin-top:2px;padding-top:8px;',
+      'border-top:1px solid rgba(93,84,73,.16)}',
+      '.shp-card-b{appearance:none;border:0;background:rgba(93,84,73,.08);text-align:left;padding:5px 8px;',
+      'border-radius:7px;font:inherit;font-size:11px;color:#4a4038;cursor:pointer;white-space:nowrap}',
+      '.shp-card-b:hover{background:rgba(93,84,73,.16)}',
+      '.shp-card-b:focus-visible{outline:2px solid #e0a63f;outline-offset:1px}',
+      /* 打盹：半透明缩小、停小动作和气泡，点一下叫醒 */
+      '.shp-root.shp-dozing .shp-pet{opacity:.45;transform:scale(.86);filter:none}',
+      '.shp-root.shp-dozing .shp-img{animation:none}',
+      /* 真正隐藏后留一个边缘小按钮，点它召唤回来 */
+      '.shp-summon{position:fixed;right:0;bottom:14px;padding:6px 7px;border:1.5px solid #5d5449;border-right:0;',
+      'border-radius:10px 0 0 10px;background:#fffdf6;color:#4a4038;font:inherit;font-size:11px;cursor:pointer;',
+      'box-shadow:0 6px 16px rgba(0,0,0,.14);pointer-events:auto;z-index:2147483000}',
+      '.shp-summon:hover{background:#f7f1e6}',
       '@media (prefers-reduced-motion: reduce){.shp-img{animation:none!important}',
-      '.shp-root .shp-pet:hover{transform:none}.shp-bubble{animation:none}.shp-menu{animation:none}}',
+      '.shp-root .shp-pet:hover{transform:none}.shp-bubble{animation:none}.shp-card{animation:none}}',
       '.shp-pet:hover{transform:translateY(-2px)}',
       '.shp-root.shp-static .shp-hit{cursor:default}',
       '.shp-root.shp-static .shp-pet:hover{transform:none}',
@@ -276,7 +303,7 @@ window.__ModuleLoader__.load({
          不做省略号截断；上限跟着视口收，窄窗口里不会顶出屏幕左边。 */
       '.shp-bubble{position:absolute;right:63px;bottom:calc(100% + 4px);width:max-content;max-width:min(260px,calc(100vw - 110px));background:#fffdf6;',
       'border:1.5px solid #5d5449;border-radius:10px 10px 2px 10px;padding:6px 10px;color:#4a4038;',
-      'font-size:12px;line-height:1.35;box-shadow:0 4px 14px rgba(0,0,0,.12);pointer-events:none;',
+      'font-size:12px;line-height:1.35;box-shadow:0 4px 14px rgba(0,0,0,.12);pointer-events:auto;cursor:pointer;',
       'animation:shp-in .25s ease}',
       '.shp-bubble:after{content:"";position:absolute;right:14px;bottom:-6px;width:10px;height:10px;',
       'background:#fffdf6;border-right:1.5px solid #5d5449;border-bottom:1.5px solid #5d5449;',
@@ -1217,13 +1244,56 @@ window.__ModuleLoader__.load({
       )
     }
 
+    /** 悬停/长按信息卡：名字、状态行与常用动作。纯展示，动作由 Overlay 传入。 */
+    function PetCard(props) {
+      const t = props.t
+      const lines = Array.isArray(props.lines) ? props.lines : []
+      return h(
+        'div',
+        {
+          className: 'shp-card' + (props.below ? ' shp-card-down' : ''),
+          role: 'dialog',
+          'aria-label': t('menu_label'),
+          onMouseEnter: props.onEnter,
+          onMouseLeave: props.onLeave,
+        },
+        h('div', { className: 'shp-card-t' }, props.name),
+        lines.length
+          ? h(
+              'div',
+              { className: 'shp-card-s' },
+              ...lines.map((line, index) => h('div', { key: 's' + index }, line)),
+            )
+          : null,
+        h(
+          'div',
+          { className: 'shp-card-acts' },
+          h('button', { key: 'a1', type: 'button', className: 'shp-card-b', onClick: props.onReset }, t('menu_reset')),
+          h('button', { key: 'a2', type: 'button', className: 'shp-card-b', onClick: props.onAct }, t('menu_act')),
+          h(
+            'button',
+            { key: 'a3', type: 'button', className: 'shp-card-b', onClick: props.onBubble },
+            props.bubble ? t('menu_bubble_on') : t('menu_bubble_off'),
+          ),
+          h(
+            'button',
+            { key: 'a4', type: 'button', className: 'shp-card-b', onClick: props.onDoze },
+            props.dozing ? t('menu_wake') : t('menu_doze'),
+          ),
+          h('button', { key: 'a5', type: 'button', className: 'shp-card-b', onClick: props.onHide }, t('menu_hide')),
+        ),
+      )
+    }
+
     function Overlay(props) {
       const t = props.t
       const settings = useSettings()
       const viewport = useViewport()
       const reduced = useReducedMotion()
       const [drag, setDrag] = React.useState(null)
-      const [menuOpen, setMenuOpen] = React.useState(false)
+      const [cardOpen, setCardOpen] = React.useState(false)
+      const [dozing, setDozing] = React.useState(false)
+      const [dismissedBubble, setDismissedBubble] = React.useState('')
       const [state, setState] = React.useState(null)
       const [manifest, setManifest] = React.useState(null)
       const [poke, setPoke] = React.useState(null)
@@ -1237,13 +1307,13 @@ window.__ModuleLoader__.load({
       const lastGreetRef = React.useRef(0)
       const companyRef = React.useRef(null)
       const shownMilestoneRef = React.useRef(0)
-      const [hover, setHover] = React.useState(false)
       /* 皮肤热切换：轮询发现 activeSkin 变了就重拉帧清单。 */
       const skinRef = React.useRef(undefined)
       const reloadManifestRef = React.useRef(null)
       /* 拖拽/长按状态放在 ref 里：pointermove 高频，避免每帧都触发 React 更新以外的开销。 */
       const dragRef = React.useRef({ active: false, moved: false, longPressed: false, startX: 0, startY: 0, startRight: 0, startBottom: 0, right: 0, bottom: 0, pointerId: 0, pressTimer: 0 })
       const suppressClickRef = React.useRef(false)
+      const cardTimer = React.useRef(0)
 
       /* 诊断上报：宿主的资源路由只收 GET，所以用 query 上报。 */
       const report = React.useRef((payload) => reportToHost(payload)).current
@@ -1395,7 +1465,7 @@ window.__ModuleLoader__.load({
       const phase = state && state.phase ? String(state.phase) : 'idle'
       const detail = state && state.detail ? state.detail : null
       /* 待机小动作：idle 时随机插一段生活动作，干活/戳一戳/里程碑时让位。 */
-      const [idleAct, playIdleAct] = useIdleAct(manifest, phase, settings.idleAct, reduced)
+      const [idleAct, playIdleAct] = useIdleAct(manifest, phase, settings.idleAct && !dozing, reduced)
       /* 闲时问候与里程碑：先于轨道选择算好，里程碑当天第一次问候用点灯轨道庆祝。 */
       const greetLive = Boolean(
         settings.greet &&
@@ -1471,16 +1541,16 @@ window.__ModuleLoader__.load({
         })
       }, [manifest, frame, phase, report])
 
-      /* 菜单打开时点别处或按 Esc 关闭。 */
+      /* 卡片打开时点别处或按 Esc 关闭。 */
       React.useEffect(() => {
-        if (!menuOpen) return undefined
+        if (!cardOpen) return undefined
         const onDown = (event) => {
           const target = event.target
-          if (target && target.closest && (target.closest('.shp-menu') || target.closest('.shp-hit'))) return
-          setMenuOpen(false)
+          if (target && target.closest && (target.closest('.shp-card') || target.closest('.shp-hit'))) return
+          setCardOpen(false)
         }
         const onKey = (event) => {
-          if (event.key === 'Escape') setMenuOpen(false)
+          if (event.key === 'Escape') setCardOpen(false)
         }
         window.addEventListener('pointerdown', onDown, true)
         window.addEventListener('keydown', onKey)
@@ -1488,7 +1558,17 @@ window.__ModuleLoader__.load({
           window.removeEventListener('pointerdown', onDown, true)
           window.removeEventListener('keydown', onKey)
         }
-      }, [menuOpen])
+      }, [cardOpen])
+
+      /* 打盹只在 idle 时成立：一旦有活儿自动醒。 */
+      React.useEffect(() => {
+        if (dozing && phase !== 'idle') setDozing(false)
+      }, [dozing, phase])
+
+      /* 相位换了就恢复气泡：同一句台词不会因为之前点掉过而永久消失。 */
+      React.useEffect(() => {
+        setDismissedBubble('')
+      }, [phase])
 
       const pokeLines = [t('poke1'), t('poke2'), t('poke3'), t('poke4')]
       const onPoke = () => {
@@ -1517,16 +1597,12 @@ window.__ModuleLoader__.load({
           ? greetingMilestone(t, greet.milestone)
           : greetingText(t, new Date().getHours())
         : null
-      /* 悬停立绘：闲置时冒时段问候，干活时在当前 label 下补一行陪伴时长。 */
-      const hoverLive = Boolean(hover && !poke && !narrateText)
-      const hoverText = hoverLive && phase === 'idle' ? greetingText(t, new Date().getHours()) : null
       const showBubble =
         settings.bubble &&
-        (Boolean(poke) || phase !== 'idle' || Boolean(narrateText) || hoverLive || Boolean(greetText))
+        (Boolean(poke) || phase !== 'idle' || Boolean(narrateText) || Boolean(greetText))
       const bubbleText =
         poke ||
         narrateText ||
-        hoverText ||
         greetText ||
         (detail && detail.key ? toolLabel(t, detail) : phaseLabel)
       const bubbleSub =
@@ -1534,7 +1610,7 @@ window.__ModuleLoader__.load({
         (!poke &&
           (narrateText
             ? speechSub(t, speech)
-            : hoverLive || greetText
+            : greetText
               ? greetingCompany(t, state && state.company)
               : detail && detail.hint
                 ? detail.hint
@@ -1586,7 +1662,7 @@ window.__ModuleLoader__.load({
         st.bottom = pos.bottom
         st.pointerId = event.pointerId
         suppressClickRef.current = false
-        setMenuOpen(false)
+        setCardOpen(false)
         const target = event.currentTarget
         if (target && target.setPointerCapture) {
           try {
@@ -1595,13 +1671,13 @@ window.__ModuleLoader__.load({
             /* 不支持捕获时退化 */
           }
         }
-        /* 触屏长按 520ms 打开菜单（鼠标走 contextmenu）。 */
+        /* 触屏长按 520ms 打开信息卡（鼠标走 hover / contextmenu）。 */
         window.clearTimeout(st.pressTimer)
         st.pressTimer = window.setTimeout(() => {
           if (!st.active || st.moved) return
           st.longPressed = true
           suppressClickRef.current = true
-          setMenuOpen(true)
+          setCardOpen(true)
         }, 520)
       }
 
@@ -1613,7 +1689,7 @@ window.__ModuleLoader__.load({
         if (!st.moved && Math.hypot(dx, dy) < 5) return
         if (st.longPressed) {
           st.longPressed = false
-          setMenuOpen(false)
+          setCardOpen(false)
         }
         st.moved = true
         window.clearTimeout(st.pressTimer)
@@ -1632,39 +1708,98 @@ window.__ModuleLoader__.load({
           return
         }
         if (event && event.detail > 1) return
+        if (dozing) {
+          setDozing(false)
+          return
+        }
         if (settings.poke) onPoke()
       }
 
       const onHitContextMenu = (event) => {
         if (event && event.preventDefault) event.preventDefault()
         suppressClickRef.current = true
-        setMenuOpen(true)
+        setCardOpen(true)
       }
 
+      /* 桌面 hover 320ms 开卡；移开 220ms 关，鼠标能挪进卡片继续点。 */
+      const onHitEnter = () => {
+        window.clearTimeout(cardTimer.current)
+        cardTimer.current = window.setTimeout(() => setCardOpen(true), 320)
+      }
+      const onHitLeave = () => {
+        window.clearTimeout(cardTimer.current)
+        cardTimer.current = window.setTimeout(() => setCardOpen(false), 220)
+      }
+      const onCardEnter = () => window.clearTimeout(cardTimer.current)
+      const onCardLeave = () => {
+        window.clearTimeout(cardTimer.current)
+        cardTimer.current = window.setTimeout(() => setCardOpen(false), 220)
+      }
+
+      const closeCard = () => setCardOpen(false)
       const resetPosition = () => {
-        setMenuOpen(false)
+        closeCard()
         saveSettings({ right: DEFAULT_SETTINGS.right, bottom: DEFAULT_SETTINGS.bottom })
       }
       const actNow = () => {
-        setMenuOpen(false)
+        closeCard()
         playIdleAct()
       }
       const toggleBubble = () => {
-        setMenuOpen(false)
+        closeCard()
         saveSettings({ bubble: !settings.bubble })
       }
+      const toggleDoze = () => {
+        closeCard()
+        setDozing(!dozing)
+      }
       const hidePet = () => {
-        setMenuOpen(false)
+        closeCard()
         saveSettings({ visible: false })
       }
 
-      if (!settings.visible) return null
+      if (!settings.visible) {
+        /* 真正隐藏后留一个边缘召唤按钮，避免「藏起来就找不回来」。 */
+        return h(
+          'div',
+          {
+            key: 'hidden',
+            className: 'shp-root shp-hidden',
+            style: { right: '0px', bottom: 'calc(14px + env(safe-area-inset-bottom, 0px))' },
+          },
+          h('style', { key: 'css', dangerouslySetInnerHTML: { __html: CSS } }),
+          h(
+            'button',
+            {
+              key: 'summon',
+              type: 'button',
+              className: 'shp-summon',
+              title: t('menu_summon'),
+              'aria-label': t('menu_summon'),
+              onClick: () => saveSettings({ visible: true }),
+            },
+            t('menu_summon'),
+          ),
+        )
+      }
+
+      const cardBelow = Boolean(viewport && viewport.h > 0 && viewport.h - pos.bottom - petSize.height < 210)
+      const cardStats = []
+      if (phase === 'idle' && settings.greet) cardStats.push(greetingText(t, new Date().getHours()))
+      const companyLine = greetingCompany(t, state && state.company)
+      if (companyLine) cardStats.push(companyLine)
+      const sessionCount = state && Number.isFinite(state.sessions) ? state.sessions : 0
+      if (sessionCount > 1) cardStats.push(t('card_sessions').replace('{n}', String(sessionCount)))
+      const nowLabel = detail && detail.key ? toolLabel(t, detail) : phaseLabel
+      cardStats.push(t('card_phase') + ' · ' + nowLabel)
+      if (manifest && manifest.displayName) cardStats.push(t('card_skin') + ' · ' + manifest.displayName)
+      const petName = (manifest && manifest.displayName) || t('overlay_label')
 
       return h(
         'div',
         {
           className:
-            'shp-root shp-' + phase + (settings.float && !reduced ? ' shp-float' : '') + (settings.poke ? '' : ' shp-static') + (drag ? ' shp-dragging' : ''),
+            'shp-root shp-' + phase + (settings.float && !reduced ? ' shp-float' : '') + (settings.poke ? '' : ' shp-static') + (drag ? ' shp-dragging' : '') + (dozing ? ' shp-dozing' : ''),
           style: {
             right: 'calc(' + pos.right + 'px + env(safe-area-inset-right, 0px))',
             bottom: 'calc(' + pos.bottom + 'px + env(safe-area-inset-bottom, 0px))',
@@ -1674,31 +1809,34 @@ window.__ModuleLoader__.load({
         h(
           'div',
           { className: 'shp-wrap' },
-          menuOpen
+          cardOpen
+            ? h(PetCard, {
+                t,
+                name: petName,
+                lines: cardStats,
+                below: cardBelow,
+                bubble: settings.bubble,
+                dozing,
+                onEnter: onCardEnter,
+                onLeave: onCardLeave,
+                onReset: resetPosition,
+                onAct: actNow,
+                onBubble: toggleBubble,
+                onDoze: toggleDoze,
+                onHide: hidePet,
+              })
+            : null,
+          showBubble && !cardOpen && !dozing && bubbleText !== dismissedBubble
             ? h(
                 'div',
                 {
-                  key: 'menu',
-                  className:
-                    'shp-menu' +
-                    (viewport && viewport.h > 0 && viewport.h - pos.bottom - petSize.height < 170 ? ' shp-menu-down' : ''),
-                  role: 'menu',
-                  'aria-label': t('menu_label'),
+                  key: 'bubble',
+                  className: 'shp-bubble',
+                  role: 'status',
+                  'aria-live': 'polite',
+                  title: t('bubble_dismiss'),
+                  onClick: () => setDismissedBubble(bubbleText),
                 },
-                h('button', { key: 'm1', type: 'button', className: 'shp-menu-b', role: 'menuitem', onClick: resetPosition }, t('menu_reset')),
-                h('button', { key: 'm2', type: 'button', className: 'shp-menu-b', role: 'menuitem', onClick: actNow }, t('menu_act')),
-                h(
-                  'button',
-                  { key: 'm3', type: 'button', className: 'shp-menu-b', role: 'menuitem', onClick: toggleBubble },
-                  settings.bubble ? t('menu_bubble_on') : t('menu_bubble_off'),
-                ),
-                h('button', { key: 'm4', type: 'button', className: 'shp-menu-b', role: 'menuitem', onClick: hidePet }, t('menu_hide')),
-              )
-            : null,
-          showBubble && !menuOpen
-            ? h(
-                'div',
-                { key: 'bubble', className: 'shp-bubble' },
                 h('div', { className: 'shp-bubble-t' }, bubbleText),
                 bubbleSub ? h('div', { className: 'shp-bubble-s' }, bubbleSub) : null,
               )
@@ -1751,8 +1889,8 @@ window.__ModuleLoader__.load({
               onPointerUp: onHitPointerUp,
               onPointerCancel: onHitPointerCancel,
               onContextMenu: onHitContextMenu,
-              onMouseEnter: () => setHover(true),
-              onMouseLeave: () => setHover(false),
+              onMouseEnter: onHitEnter,
+              onMouseLeave: onHitLeave,
               title: t('overlay_label'),
             }),
           ),
@@ -1811,6 +1949,7 @@ window.__ModuleLoader__.load({
       dragPosition,
       pickIdleAct,
       IDLE_ACTS,
+      PetCard,
       speechText,
       speechSub,
       toolLabel,

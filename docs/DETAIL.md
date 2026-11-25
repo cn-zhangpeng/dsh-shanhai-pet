@@ -210,8 +210,14 @@ Host 在 `GET /api/shanhai-pet/state` 的每次请求上推进陪伴计时：客
 - **拖动**：在头像热区按下（Pointer Events + `setPointerCapture`）后移动超过 5px 进入拖动，
   位移换算成新的「距右/距底」并用视口夹取（`dragPosition`），松手才 POST 保存；
   拖动中停掉过渡、浮动与 hover 抬升。窗口缩放后渲染时也会把位置收进视口。
-- **右键/长按菜单**：`contextmenu` 或触屏长按 520ms 打开，菜单在立绘上方（顶部不够时翻到
-  下方，`shp-menu-down`）：回到原位 / 动一下 / 气泡开关 / 先藏起来；点别处或 Esc 关闭。
+- **信息卡**：桌面悬停头像 320ms、触屏长按 520ms 或右键打开同一张卡（`PetCard`），
+  卡里是名字、时段问候、相遇天数/今日陪伴、当前状态、皮肤，以及回到原位 / 动一下 /
+  气泡开关 / 打盹 / 藏起来；鼠标移进卡片不会关，移开 220ms 后关闭；点别处或 Esc 也关。
+- **打盹与召唤**：打盹是本地瞬时状态（不落盘），缩到 0.86 倍、45% 透明度并停掉小动作和
+  气泡，点一下叫醒；相位离开 idle 时自动醒。真正隐藏（`visible:false`）时浮层只渲染
+  右下角一个 `.shp-summon` 小按钮，点它恢复显示，避免「藏起来找不回来」。
+- **气泡收起**：气泡可点击（`pointer-events:auto`），点掉后按台词文本记住，相位变化时
+  清空；气泡带 `role="status"` + `aria-live="polite"`。
 - **待机小动作**：`useIdleAct` 在 idle 相位每 18–60 秒从 `IDLE_ACTS` 里挑一条
   `pet.json` 实际存在的短轨道播 ~2.2 秒；`idleAct` 关闭、`prefers-reduced-motion`
   命中或离开 idle 时自动停。

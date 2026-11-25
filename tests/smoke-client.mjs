@@ -133,6 +133,8 @@ assert.equal(typeof hitVnode.props.onPointerDown, 'function', '热区支持拖�
 assert.equal(typeof hitVnode.props.onPointerMove, 'function', '热区支持拖动移动')
 assert.equal(typeof hitVnode.props.onPointerUp, 'function', '热区支持拖动收尾')
 assert.equal(typeof hitVnode.props.onContextMenu, 'function', '热区支持右键菜单')
+assert.equal(typeof hitVnode.props.onMouseEnter, 'function', '悬停打开信息卡')
+assert.equal(typeof hitVnode.props.onMouseLeave, 'function', '移开关闭信息卡')
 
 /* 拖动落点：按「距右/距底」反向移动并夹在视口内 */
 assert.equal(typeof exported.dragPosition, 'function', '导出 dragPosition 供测试')
@@ -159,10 +161,47 @@ for (let i = 0; i < 20; i++) {
 }
 
 /* 菜单 / 拖动 / 降低动效的样式都在 */
-assert.ok(css.includes('.shp-menu{'), '存在右键菜单样式')
+assert.ok(css.includes('.shp-card{'), '存在信息卡样式')
+assert.ok(css.includes('.shp-card-b'), '信息卡带动作按钮')
+assert.ok(css.includes('.shp-summon{'), '隐藏后有边缘召唤按钮')
+assert.ok(css.includes('.shp-dozing'), '打盹状态样式存在')
+assert.ok(/\.shp-bubble\{[^}]*pointer-events:auto/.test(css), '气泡可点击收起')
 assert.ok(/\.shp-hit\{[^}]*touch-action:none/.test(css), '拖动时不触发页面滚动')
 assert.ok(css.includes('.shp-dragging'), '拖动中样式存在')
 assert.ok(css.includes('prefers-reduced-motion'), '尊重系统减少动态效果')
+
+/* 信息卡：名字 + 状态行 + 五个动作，打盹/气泡文案随状态切换 */
+assert.equal(typeof exported.PetCard, 'function', '导出 PetCard 供测试')
+const petCard = exported.PetCard({
+  t,
+  name: '冉冉',
+  lines: ['晚上好', '相遇第 3 天 · 今天已陪 12 分钟', '现在 · 发呆'],
+  bubble: true,
+  dozing: false,
+})
+assert.equal(petCard.props.className, 'shp-card', '信息卡根节点使用 .shp-card')
+assert.equal(petCard.props.role, 'dialog', '信息卡带 dialog 语义')
+assert.equal(petCard.children[0].children[0], '冉冉', '卡片标题是灵宠名字')
+assert.equal(petCard.children[1].children.length, 3, '三行状态都渲染出来')
+const cardActs = petCard.children[2].children
+assert.equal(cardActs.length, 5, '五个动作按钮')
+assert.deepEqual(
+  cardActs.map((button) => button.children[0]),
+  ['回到原位', '动一下', '隐藏气泡', '打个盹', '先藏起来'],
+  '动作文案按当前状态渲染',
+)
+const dozeCard = exported.PetCard({ t, name: '冉冉', lines: [], bubble: false, dozing: true })
+const dozeChildren = dozeCard.children.filter(Boolean)
+assert.equal(dozeChildren.length, 2, '没有状态行时只剩标题与动作区')
+assert.deepEqual(
+  dozeChildren[1].children.map((button) => button.children[0]),
+  ['回到原位', '动一下', '显示气泡', '叫醒', '先藏起来'],
+  '打盹时动作切换为叫醒',
+)
+assert.ok(
+  exported.PetCard({ t, name: 'x', lines: [], below: true }).props.className.includes('shp-card-down'),
+  '顶部空间不足时翻到下方',
+)
 
 /* 拖动收尾：位移超过阈值后把新位置写回设置（POST /settings） */
 const calls = []
