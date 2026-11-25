@@ -49,7 +49,12 @@ assert.equal(normalizeSettings({ height: 320 }, { ...DEFAULT_SETTINGS, visible: 
 /* ---- DSH home 解析 ---- */
 assert.equal(resolveDshHome({}, 'C:\\Users\\x'), path.join('C:\\Users\\x', '.dsh'))
 assert.equal(resolveDshHome({ DSH_HOME: '~/custom' }, 'C:\\Users\\x'), path.join('C:\\Users\\x', 'custom'))
-assert.equal(resolveDshHome({ DSH_HOME: 'D:\\dsh-home' }, 'C:\\Users\\x'), 'D:\\dsh-home')
+/* 盘符路径只在该平台上算绝对路径；CI 跑在 Linux，用各自的绝对路径验证。 */
+if (process.platform === 'win32') {
+  assert.equal(resolveDshHome({ DSH_HOME: 'D:\\dsh-home' }, 'C:\\Users\\x'), 'D:\\dsh-home')
+} else {
+  assert.equal(resolveDshHome({ DSH_HOME: '/srv/dsh-home' }, '/home/x'), '/srv/dsh-home')
+}
 assert.ok(settingsFile().startsWith(home), '设置文件落在 DSH_HOME 下')
 
 /* ---- 事件投影 ---- */
